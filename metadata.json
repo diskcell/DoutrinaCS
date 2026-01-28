@@ -1,0 +1,7 @@
+{
+  "name": "IntelliBoard AI",
+  "description": "A futuristic, AI-powered whiteboard for personal and professional project organization. Think, write, and let AI visualize and connect your ideas.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
