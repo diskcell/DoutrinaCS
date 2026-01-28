@@ -1,13 +1,14 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { BoardData } from "../types";
 
-// Schema de resposta para garantir o JSON correto
+// Esquema mantido
 const RESPONSE_SCHEMA = {
   type: Type.OBJECT,
   properties: {
     chatResponse: { 
       type: Type.STRING, 
-      description: "A resposta textual para o usuário. Responda em Português." 
+      description: "A resposta textual para o usuário. Deve ser o foco principal em conversas exploratórias." 
     },
     boardData: {
       type: Type.OBJECT,
@@ -33,6 +34,7 @@ const RESPONSE_SCHEMA = {
             },
             required: ["id", "type", "x", "y", "width", "height", "content"]
           },
+          description: "Lista de novos elementos. Deixe vazio se estiver apenas conversando."
         },
         connections: {
           type: Type.ARRAY,
@@ -48,6 +50,7 @@ const RESPONSE_SCHEMA = {
             },
             required: ["id", "fromId", "toId"]
           },
+          description: "Lista de conexões. Deixe vazio se estiver apenas conversando."
         }
       },
       required: ["elements", "connections"]
@@ -62,25 +65,39 @@ export const generateBoardLayout = async (
   history: { role: 'user' | 'model', parts: { text: string }[] }[] = []
 ): Promise<{ chatResponse: string; boardData: BoardData }> => {
   
-  // 1. CORREÇÃO: Usar import.meta.env para Vite (Navegador)
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error("CRITICAL: API Key is missing. Check your .env file.");
-    throw new Error("Chave de API ausente ou não carregada.");
+  // Debug para ajudar o usuário localmente
+  if (!process.env.API_KEY) {
+    console.error("CRITICAL: API Key is missing or empty. Please check your .env file.");
+    throw new Error("API Key not found in environment variables");
   }
 
-  const ai = new GoogleGenAI({ apiKey });
+  const ai = new GoogleGenAI({ apiKey: "AIzaSyAFiimHjmDHb16-L-Gkqf-G0uMVJw74Rwc" });
 
   const systemInstruction = `
-    Você é o "IntelliBoard AI", um assistente de estratégia.
-    Responda em JSON válido seguindo o schema.
-    Se o usuário só quiser conversar, devolva arrays vazios em elements e connections.
+    Você é o "IntelliBoard AI", um consultor de estratégia e criatividade. 
+    
+    DIRETRIZ DE COMPORTAMENTO:
+    1. ANALISE A INTENÇÃO: O usuário quer APENAS CONVERSAR ou quer ORGANIZAR O QUADRO?
+       - Se o usuário fizer uma pergunta genérica (ex: "O que você acha de marketing?"), responda apenas no 'chatResponse'. Deixe 'elements' e 'connections' VAZIOS.
+       - Se o usuário pedir para planejar, estruturar ou criar algo visual (ex: "Monte um plano de estudo"), então preencha o 'boardData'.
+    
+    2. SEJA EDUCADO E HUMANO: 
+       - Não despeje cartões no quadro sem necessidade. 
+       - Em conversas longas, ofereça: "Se quiser, posso transformar esse planejamento em cards no seu whiteboard. Deseja fazer isso agora?".
+    
+    3. QUALIDADE SOBRE QUANTIDADE:
+       - Ao criar cartões, use títulos curtos e descrições úteis.
+       - Conecte as ideias logicamente para criar um fluxo de pensamento.
+
+    REGRAS TÉCNICAS:
+    - Responda SEMPRE em Português do Brasil.
+    - O 'chatResponse' deve ser amigável e natural, sem formatação Markdown excessiva.
+    - Se não for criar nada no quadro, retorne: "boardData": {"elements": [], "connections": []}.
   `;
 
   try {
-    // 2. CORREÇÃO: Usar um modelo que existe (gemini-1.5-flash)
     const result = await ai.models.generateContent({
-      model: "gemini-1.5-flash", 
+      model: "gemini-3-flash-preview",
       contents: [
         ...history,
         { role: 'user', parts: [{ text: prompt }] }
@@ -93,16 +110,13 @@ export const generateBoardLayout = async (
       }
     });
 
-    // 3. Tratamento seguro da resposta
-    const responseText = result.text();
+    const responseText = result.text;
     if (!responseText) throw new Error("Resposta vazia da IA");
     
-    // Limpeza extra para garantir JSON válido
-    const cleanJson = responseText.replace(/```json|```/g, '').trim();
-    
-    return JSON.parse(cleanJson);
+    return JSON.parse(responseText);
   } catch (error) {
-    console.error("Erro detalhado na API Gemini:", error);
+    console.error("Erro detalhado no serviço Gemini:", error);
+    // Re-throw para o componente pegar
     throw error;
   }
 };
