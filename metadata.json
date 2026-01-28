@@ -1,7 +1,5 @@
 {
-  "name": "IntelliBoard AI",
-  "description": "A futuristic, AI-powered whiteboard for personal and professional project organization. Think, write, and let AI visualize and connect your ideas.",
-  "requestFramePermissions": [
-    "geolocation"
-  ]
+  "name": "Doutrina CS - CS2 Training",
+  "description": "Plataforma de treinamento profissional para Counter-Strike 2 focada em evolução de patente e estratégias avançadas.",
+  "requestFramePermissions": []
 }

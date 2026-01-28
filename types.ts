@@ -1,48 +1,52 @@
 
-export type Status = 'idea' | 'in-progress' | 'completed';
-export type Priority = 'low' | 'medium' | 'high';
-export type ElementType = 'card' | 'sticky' | 'shape';
-export type Side = 'top' | 'right' | 'bottom' | 'left';
-export type TextAlign = 'left' | 'center' | 'right';
+export interface NavItem {
+  label: string;
+  href: string;
+}
 
-export interface BoardElement {
+export interface Feature {
+  id: number;
+  text: string;
+  highlight?: boolean;
+}
+
+export interface Milestone {
+  level: number;
+  label: string;
+  description: string;
+  icon: 'silver' | 'ak' | 'global' | 'pro';
+}
+
+export interface LessonStatus {
+  id: string; // UUID agora
+  title: string;
+  duration: string;
+  status: 'completed' | 'available' | 'locked';
+  video_url?: string; // Alterado para snake_case para bater com o Supabase
+  description?: string; // Descrição da aula
+  module_id?: string;
+  order?: number;
+}
+
+export interface ModuleStatus {
+  id: string; // UUID agora
+  title: string;
+  progress: number;
+  lessons: LessonStatus[];
+  order?: number;
+}
+
+export interface Notice {
+  id: number;
+  text: string;
+  date: string;
+}
+
+export interface UserProfile {
   id: string;
-  type: ElementType;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  title?: string;
-  content: string;
-  tags?: string[];
-  status?: Status;
-  priority?: Priority;
-  color?: string;
-  zIndex: number;
-  // New styling properties
-  textAlign?: TextAlign;
-  fontSizeScale?: number; // Multiplier (e.g., 0.8, 1.0, 1.5)
-  textColor?: string;
-}
-
-export interface Connection {
-  id: string;
-  fromId: string;
-  toId: string;
-  fromSide?: Side;
-  toSide?: Side;
-  label?: string;
-  color?: string;
-  style: 'curved' | 'straight';
-}
-
-export interface Viewport {
-  x: number;
-  y: number;
-  scale: number;
-}
-
-export interface BoardData {
-  elements: BoardElement[];
-  connections: Connection[];
+  role: 'student' | 'admin';
+  has_purchased?: boolean; // Alterado de approved para has_purchased
+  name?: string;           // Alterado de full_name para name
+  email?: string;
+  created_at?: string;
 }
