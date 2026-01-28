@@ -7,15 +7,45 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Rajdhani:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              display: ['Rajdhani', 'sans-serif'],
+            },
+            animation: {
+              'fade-in': 'fadeIn 0.5s ease-out',
+              'fade-in-up': 'fadeInUp 0.7s ease-out',
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              'float': 'float 6s ease-in-out infinite',
+            },
+            keyframes: {
+              fadeIn: {
+                '0%': { opacity: '0' },
+                '100%': { opacity: '1' },
+              },
+              fadeInUp: {
+                '0%': { opacity: '0', transform: 'translateY(20px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
+              },
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
         background-color: #0F1012;
         color: #E2E2E2;
-      }
-      h1, h2, h3, h4, h5, h6, .font-display {
-        font-family: 'Rajdhani', sans-serif;
+        overflow-x: hidden;
       }
       
       /* Custom Scrollbar */
@@ -23,10 +53,10 @@
         width: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #18181b; 
+        background: #0F1012; 
       }
       ::-webkit-scrollbar-thumb {
-        background: #404040; 
+        background: #333; 
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
@@ -35,21 +65,17 @@
 
       /* CS2 Smoke/Gradient Effect Background */
       .cs2-bg {
-        background: radial-gradient(circle at 50% 0%, rgba(56, 58, 64, 0.4) 0%, rgba(15, 16, 18, 1) 70%);
-        position: relative;
-        overflow: hidden;
-      }
-      .cs2-bg::before {
-        content: "";
-        position: absolute;
-        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: #0F1012;
         background-image: 
-          linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-        background-size: 40px 40px;
-        mask-image: linear-gradient(to bottom, black 40%, transparent 100%);
-        pointer-events: none;
-        z-index: 0;
+          radial-gradient(circle at 50% 0%, rgba(238, 179, 45, 0.08) 0%, transparent 60%),
+          linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        background-size: 100% 100%, 40px 40px, 40px 40px;
+        position: relative;
+      }
+      
+      .text-glow {
+        text-shadow: 0 0 20px rgba(238, 179, 45, 0.3);
       }
     </style>
 
@@ -67,7 +93,7 @@
   }
 }
 </script>
-  <script type="module" crossorigin src="/DoutrinaCS/assets/index-BFCYjjus.js"></script>
+  <script type="module" crossorigin src="/DoutrinaCS/assets/index-AyGpUlWu.js"></script>
 </head>
   <body>
     <div id="root"></div>
