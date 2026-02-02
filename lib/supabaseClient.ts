@@ -1,23 +1,53 @@
+
 import { createClient } from '@supabase/supabase-js';
 
-// URL do seu projeto Supabase
-const supabaseUrl = 'https://hpbxcpfkzqvpbnkfoxos.supabase.co';
+const getEnvVar = (key: string): string => {
+  // Tenta buscar no import.meta.env (padrão Vite)
+  try {
+    const metaEnv = (import.meta as any).env;
+    if (metaEnv && metaEnv[key]) return metaEnv[key];
+  } catch (e) {}
 
-/**
- * ⚠️ ATENÇÃO: Substitua pela sua 'anon' 'public' key real encontrada no painel do Supabase:
- * Settings -> API -> Project API keys -> anon (public)
- */
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwYnhjcGZrenF2cGJua2ZveG9zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkzMTU4NjksImV4cCI6MjA4NDg5MTg2OX0.eO-H88Jy7E25FCdapaUMx6vXQIeD249gpAgu9EdLQ-s'; 
+  // Tenta buscar no process.env (padrão Node/WebContainers)
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (e) {}
 
-// Verifica se a chave foi alterada para uma chave real do Supabase
-export const isConfigured = supabaseKey && 
-                            supabaseKey.startsWith('eyJ') && 
-                            !supabaseKey.includes('placeholder');
+  // Fallback para busca global se disponível
+  try {
+    if (typeof window !== 'undefined' && (window as any).env && (window as any).env[key]) {
+      return (window as any).env[key];
+    }
+  } catch (e) {}
 
-export const supabase = createClient(supabaseUrl.trim(), supabaseKey.trim(), {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    detectSessionInUrl: true
+  return '';
+};
+
+const supabaseUrl = getEnvVar('VITE_SUPABASE_URL');
+const supabaseKey = getEnvVar('VITE_SUPABASE_ANON_KEY');
+
+export const isConfigured = !!(
+  supabaseUrl && 
+  supabaseKey && 
+  supabaseUrl.startsWith('https://') &&
+  supabaseKey.length > 20
+);
+
+if (!isConfigured) {
+  console.warn("Supabase não detectado via variáveis de ambiente. Verifique o arquivo .env.local ou as configurações do ambiente.");
+}
+
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co', 
+  supabaseKey || 'placeholder', 
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      storageKey: 'doutrina-cs-auth'
+    }
   }
-});
+);

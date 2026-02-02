@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Trophy, TrendingUp, Target, Brain, Shield, MousePointer2, Settings, Users, ChevronRight, MonitorPlay } from 'lucide-react';
 
@@ -152,7 +153,7 @@ const Hero: React.FC<HeroProps> = ({ onNavigate }) => {
                 </div>
              </div>
 
-             {/* Layer 2: GamersClub & Faceit */}
+             {/* Layer 2: GamersClub & Faceit (Z-INDEX 50 - Lowered to increase gap with objective) */}
              <div className="absolute top-[280px] left-[40px] z-50 flex items-center group">
                 <div className="w-20 h-20 bg-[#eeb32d] rounded-full border-4 border-[#131315] flex items-center justify-center shadow-[0_0_50px_rgba(238,179,45,0.8)] group-hover:scale-110 transition-transform relative z-20">
                    <Trophy size={36} className="text-black" />
@@ -173,7 +174,7 @@ const Hero: React.FC<HeroProps> = ({ onNavigate }) => {
                 </div>
              </div>
 
-             {/* Layer 3: Objetivo Final */}
+             {/* Layer 3: Objetivo Final (Z-INDEX 60 - Pushed higher) */}
              <div className="absolute top-[10px] left-1/2 -translate-x-1/2 z-[60] flex flex-col items-center">
                 <div className="relative mb-3">
                    <div className="absolute inset-0 bg-[#eeb32d] blur-3xl opacity-30 animate-pulse"></div>

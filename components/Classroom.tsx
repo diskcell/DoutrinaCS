@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronLeft, Play, CheckCircle2, Lock, Circle, ChevronDown, ChevronUp, Menu, X, ArrowRight } from 'lucide-react';
 import { ModuleStatus, LessonStatus } from '../types';
+import VideoPlayer from './VideoPlayer'; 
 
 interface ClassroomProps {
   lesson: LessonStatus;
@@ -13,29 +15,50 @@ interface ClassroomProps {
 const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelectLesson, onComplete }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   
-  // Encontra o módulo atual para manter o menu aberto na aula correta
+  useEffect(() => {
+    if (window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, []);
+  
   const initialModuleId = useMemo(() => {
     return modules.find(m => m.lessons.some(l => l.id === lesson.id))?.id || null;
   }, [lesson.id, modules]);
 
   const [openModuleId, setOpenModuleId] = useState<string | null>(initialModuleId);
+  const [isLocalCompleted, setIsLocalCompleted] = useState(lesson.status === 'completed');
+
+  useEffect(() => {
+    setIsLocalCompleted(lesson.status === 'completed');
+  }, [lesson.id, lesson.status]);
 
   const currentModule = modules.find(m => m.lessons.some(l => l.id === lesson.id));
-  const isCompleted = lesson.status === 'completed';
+  const isCompleted = isLocalCompleted || lesson.status === 'completed';
 
-  // Encontrar próxima aula para o botão de atalho
+  const handleMarkComplete = () => {
+    setIsLocalCompleted(true);
+    onComplete();
+  };
+
   const nextLesson = useMemo(() => {
     const allLessons = modules.flatMap(m => m.lessons);
     const currentIndex = allLessons.findIndex(l => l.id === lesson.id);
     if (currentIndex !== -1 && currentIndex < allLessons.length - 1) {
-      const next = allLessons[currentIndex + 1];
-      return next.status !== 'locked' ? next : null;
+      return allLessons[currentIndex + 1];
     }
     return null;
   }, [lesson.id, modules]);
 
-  // Verifica se é um Iframe (Bunny Embed) ou arquivo direto (mp4/m3u8)
-  const isEmbed = lesson.video_url?.includes('iframe') || lesson.video_url?.includes('embed') || !lesson.video_url?.match(/\.(mp4|webm|ogg|mov)$/i);
+  // Recupera o ID ou URL, dando prioridade para o novo campo 'video_id'
+  const videoSource = (lesson as any).video_id || lesson.video_url;
+
+  // Lógica de Detecção Inteligente
+  const isSimpleId = videoSource && !videoSource.includes('/') && !videoSource.includes('.'); 
+  const isDriveUrl = videoSource && videoSource.includes('drive.google.com');
+  const isEmbed = videoSource && (videoSource.includes('iframe') || videoSource.includes('embed'));
+  
+  // Se for ID simples ou Link do Drive, usa o nosso Player Cloudflare
+  const shouldUseCustomPlayer = isSimpleId || isDriveUrl;
 
   const handleLessonChange = (newLesson: LessonStatus) => {
     if (newLesson.status !== 'locked') {
@@ -78,54 +101,63 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
 
       <div className="flex flex-1 overflow-hidden relative">
         
-        <div className="flex-1 overflow-y-auto bg-black flex flex-col">
-           <div className="w-full bg-black relative aspect-video shadow-2xl flex items-center justify-center">
-              {lesson.video_url ? (
-                isEmbed ? (
-                  <iframe 
-                    key={lesson.id} // Garante que o iframe recarregue se o ID mudar
-                    src={lesson.video_url}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" 
-                    allowFullScreen={true}
-                  />
-                ) : (
-                  <video
-                    key={lesson.id}
-                    className="w-full h-full"
-                    src={lesson.video_url}
-                    controls
-                    autoPlay
-                    controlsList="nodownload"
-                    onContextMenu={(e) => e.preventDefault()}
-                  >
-                    Seu navegador não suporta a tag de vídeo.
-                  </video>
-                )
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 bg-[#0F1012] border-b border-white/5">
-                  <Play size={48} className="mb-4 opacity-50" />
-                  <p>Vídeo não disponível nesta aula.</p>
-                </div>
-              )}
+        <div className="flex-1 overflow-y-auto bg-[#0F1012] flex flex-col">
+           <div className="w-full bg-black border-b border-white/5 flex justify-center sticky top-0 z-10 shadow-2xl">
+               <div className="w-full max-w-6xl relative aspect-video bg-black flex items-center justify-center">
+                  {videoSource ? (
+                    shouldUseCustomPlayer ? (
+                      <VideoPlayer 
+                        key={`drive-${lesson.id}`}
+                        videoId={videoSource.match(/[-\w]{25,}/)?.[0] || videoSource} 
+                        poster={lesson.cover_url}
+                        autoplay={false}
+                      />
+                    ) : isEmbed ? (
+                      <iframe 
+                        key={`embed-${lesson.id}`}
+                        src={videoSource}
+                        className="w-full h-full border-0"
+                        allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;" 
+                        allowFullScreen={true}
+                      />
+                    ) : (
+                      <video
+                        key={`native-${lesson.id}`}
+                        className="w-full h-full"
+                        src={videoSource}
+                        poster={lesson.cover_url}
+                        controls
+                        controlsList="nodownload"
+                        onContextMenu={(e) => e.preventDefault()}
+                      >
+                        Seu navegador não suporta a tag de vídeo.
+                      </video>
+                    )
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-500 bg-[#0F1012]">
+                      <Play size={48} className="mb-4 opacity-50" />
+                      <p className="text-xs uppercase tracking-widest font-bold">Vídeo não disponível nesta aula.</p>
+                    </div>
+                  )}
+               </div>
            </div>
 
            <div className="p-6 md:p-10 max-w-5xl mx-auto w-full">
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-8 mb-8 pb-10 border-b border-white/5">
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
-                     <span className="bg-[#eeb32d]/10 text-[#eeb32d] text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-1 rounded">Objetivo em Curso</span>
-                     <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">{lesson.duration} de Treinamento</span>
+                      <span className="bg-[#eeb32d]/10 text-[#eeb32d] text-[10px] font-bold uppercase tracking-[0.2em] px-3 py-1 rounded">Objetivo em Curso</span>
+                      <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">{lesson.duration} de Treinamento</span>
                   </div>
                   <h2 className="text-3xl md:text-5xl font-display font-bold uppercase italic text-white tracking-tight">Descrição da Missão</h2>
-                  <p className="text-gray-400 text-base leading-relaxed max-w-3xl">
+                  <p className="text-gray-400 text-base leading-relaxed max-w-3xl whitespace-pre-wrap">
                     {lesson.description || "Nesta fase do treinamento, focaremos em táticas específicas e mecânicas avançadas para consolidar sua evolução como operador de elite. Estude cada detalhe visualizado."}
                   </p>
                 </div>
                 
                 <div className="flex flex-col gap-3 shrink-0">
                   <button 
-                    onClick={onComplete}
+                    onClick={handleMarkComplete}
                     disabled={isCompleted}
                     className={`flex items-center justify-center gap-3 px-8 py-5 rounded font-bold text-sm uppercase transition-all shadow-xl tracking-[0.1em] ${
                       isCompleted 
@@ -149,9 +181,18 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
                   {nextLesson && (
                     <button 
                       onClick={() => handleLessonChange(nextLesson)}
-                      className="flex items-center justify-center gap-3 px-8 py-4 rounded bg-white/5 hover:bg-white/10 text-white border border-white/10 font-bold text-[11px] uppercase tracking-[0.15em] transition-all"
+                      disabled={nextLesson.status === 'locked'}
+                      className={`flex items-center justify-center gap-3 px-8 py-4 rounded border font-bold text-[11px] uppercase tracking-[0.15em] transition-all ${
+                        nextLesson.status === 'locked' 
+                          ? 'bg-white/5 text-gray-600 border-white/5 cursor-not-allowed'
+                          : 'bg-white/5 hover:bg-white/10 text-white border-white/10'
+                      }`}
                     >
-                      Próxima Aula <ArrowRight size={16} />
+                      {nextLesson.status === 'locked' ? (
+                        <>Bloqueado <Lock size={14} /></>
+                      ) : (
+                        <>Próxima Aula <ArrowRight size={16} /></>
+                      )}
                     </button>
                   )}
                 </div>
@@ -193,6 +234,8 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
                    <div className="bg-black/30 animate-fade-in">
                      {module.lessons.map((l) => {
                        const isActive = l.id === lesson.id;
+                       const isLessonComplete = l.status === 'completed' || (isActive && isLocalCompleted);
+
                        return (
                          <button 
                            key={l.id}
@@ -205,8 +248,8 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
                            } ${l.status === 'locked' ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`}
                          >
                            <div className="mt-0.5 shrink-0 transition-transform group-hover/item:scale-110">
-                             {l.status === 'completed' && <CheckCircle2 size={18} className="text-green-500" />}
-                             {l.status === 'available' && <Circle size={18} className={isActive ? "text-[#eeb32d] fill-[#eeb32d]/20" : "text-gray-600"} />}
+                             {isLessonComplete && <CheckCircle2 size={18} className="text-green-500" />}
+                             {!isLessonComplete && l.status === 'available' && <Circle size={18} className={isActive ? "text-[#eeb32d] fill-[#eeb32d]/20" : "text-gray-600"} />}
                              {l.status === 'locked' && <Lock size={18} className="text-gray-700" />}
                            </div>
                            

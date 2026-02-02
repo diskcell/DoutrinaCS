@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ArrowLeft, Send, CheckCircle2, KeyRound, Smartphone } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+import { supabase, isConfigured } from '../lib/supabaseClient';
 
 interface LoginProps {
   onNavigate: (page: string) => void;
@@ -58,8 +58,8 @@ const Login: React.FC<LoginProps> = ({ onNavigate, onRecoveryModeChange }) => {
   // --- LOGIC: LOGIN NORMAL ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
     setError('');
+    setIsLoading(true);
 
     try {
       const { error: authError } = await supabase.auth.signInWithPassword({
@@ -74,8 +74,10 @@ const Login: React.FC<LoginProps> = ({ onNavigate, onRecoveryModeChange }) => {
       const errorMessage = err.message || '';
       if (errorMessage === 'Invalid login credentials') {
         setError('E-mail ou senha incorretos.');
+      } else if (errorMessage === 'Failed to fetch') {
+        setError('Erro de conexão. Verifique sua internet ou a configuração do Supabase.');
       } else {
-        setError('Erro ao fazer login. Tente novamente.');
+        setError(errorMessage || 'Erro ao fazer login. Tente novamente.');
       }
     } finally {
       setIsLoading(false);
@@ -106,6 +108,8 @@ const Login: React.FC<LoginProps> = ({ onNavigate, onRecoveryModeChange }) => {
       console.error("Erro ao enviar código:", err);
       if (err.message.includes("security purposes") || err.message.includes("5 seconds")) {
          setError("Aguarde alguns segundos antes de solicitar um novo código.");
+      } else if (err.message === 'Failed to fetch') {
+        setError('Erro de conexão. Verifique a configuração do Supabase.');
       } else {
          setError(err.message || "Erro ao enviar código.");
       }
@@ -262,7 +266,7 @@ const Login: React.FC<LoginProps> = ({ onNavigate, onRecoveryModeChange }) => {
                 <button 
                     type="submit" 
                     disabled={isLoading}
-                    className="w-full bg-[#eeb32d] hover:bg-[#dca020] disabled:bg-gray-600 text-black font-bold font-display text-lg py-3 rounded flex items-center justify-center gap-2 transition-all"
+                    className="w-full bg-[#eeb32d] hover:bg-[#dca020] disabled:bg-gray-600 disabled:cursor-not-allowed text-black font-bold font-display text-lg py-3 rounded flex items-center justify-center gap-2 transition-all"
                 >
                     {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <>ACESSAR CONTA <ArrowRight className="w-5 h-5" /></>}
                 </button>
@@ -279,7 +283,7 @@ const Login: React.FC<LoginProps> = ({ onNavigate, onRecoveryModeChange }) => {
                           required
                           className="w-full bg-[#0a0a0b] border border-white/10 text-white rounded p-3 focus:outline-none focus:border-[#eeb32d]"
                         />
-                        <button type="submit" disabled={isLoading} className="w-full bg-[#eeb32d] text-black font-bold py-3 rounded">
+                        <button type="submit" disabled={isLoading} className="w-full bg-[#eeb32d] text-black font-bold py-3 rounded disabled:bg-gray-600">
                             {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "ENVIAR CÓDIGO"}
                         </button>
                     </form>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, CheckCircle2, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
-import { supabase } from '../lib/supabaseClient';
+import { supabase, isConfigured } from '../lib/supabaseClient';
 
 interface SignupProps {
   onNavigate: (page: string) => void;
@@ -106,7 +106,11 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
 
       } catch (error: any) {
         console.error('Erro no cadastro:', error);
-        setGeneralError(error.message || 'Erro ao criar conta. Tente novamente.');
+        if (error.message === 'Failed to fetch') {
+           setGeneralError('Erro de conexão. Verifique sua internet ou a configuração do Supabase.');
+        } else {
+           setGeneralError(error.message || 'Erro ao criar conta. Tente novamente.');
+        }
       } finally {
         setIsLoading(false);
       }

@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { Loader2, RefreshCw, WifiOff } from 'lucide-react';
+import { Loader2, RefreshCw } from 'lucide-react';
 import { supabase, isConfigured } from './lib/supabaseClient';
 import Navbar from './components/Navbar';
 import Hero from './components/Hero';
@@ -16,191 +17,240 @@ import Login from './components/Login';
 import Signup from './components/Signup';
 import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
+import Checkout from './components/Checkout';
+import CustomModal from './components/CustomModal';
 
-type PageType = 'home' | 'course' | 'plans' | 'login' | 'signup' | 'dashboard' | 'admin';
+type PageType = 'home' | 'course' | 'plans' | 'login' | 'signup' | 'dashboard' | 'admin' | 'checkout';
+
+const ADMIN_EMAIL = 'jefersonjjjj24@gmail.com';
 
 function App() {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isProfileLoading, setIsProfileLoading] = useState(false);
-  const [isRecoveryMode, setIsRecoveryMode] = useState(false);
-  const [connectionError, setConnectionError] = useState(false);
   
-  const recoveryModeRef = useRef(false);
-  const currentPageRef = useRef<PageType>('home');
-  const profileFetchedRef = useRef(false);
+  // isLoading começa true e vira false APENAS UMA VEZ na vida do app
+  const [isAppReady, setIsAppReady] = useState(false);
+  const [showResetOption, setShowResetOption] = useState(false);
+  
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [selectedPlan, setSelectedPlan] = useState<{id: string, price: number, name: string} | null>(null);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
+  // --- FUNÇÃO DE RESET DE EMERGÊNCIA ---
+  const handleAppReset = async () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      await supabase.auth.signOut();
+    } catch (e) { console.error(e); }
+    window.location.reload();
+  };
+
+  // --- BOOTSTRAP DO SISTEMA ---
   useEffect(() => {
-    currentPageRef.current = currentPage;
-    window.scrollTo(0, 0);
-  }, [currentPage]);
+    let mounted = true;
 
-  useEffect(() => {
-    recoveryModeRef.current = isRecoveryMode;
-  }, [isRecoveryMode]);
+    // Timeout de segurança: Se travar por 5s, mostra botão de reset
+    const safetyTimer = setTimeout(() => {
+      if (!isAppReady) setShowResetOption(true);
+    }, 5000);
 
-  useEffect(() => {
-    if (!isConfigured) {
-      setIsLoading(false);
-      return;
-    }
+    const init = async () => {
+      if (!isConfigured) {
+        if (mounted) setIsAppReady(true);
+        return;
+      }
 
-    const initSession = async () => {
       try {
-        const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-        if (error) throw error;
+        // 1. Pega sessão inicial
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
         
-        if (currentSession) {
-          setSession(currentSession);
-          // Primeiro carregamento é o único que pode ser bloqueante se necessário
-          await fetchUserProfile(currentSession.user.id, true);
-          
-          const hash = window.location.hash;
-          if (hash === '#admin') handlePageChange('admin');
-          else if (hash === '#dashboard') handlePageChange('dashboard');
+        if (initialSession) {
+           setSession(initialSession);
+           // Busca perfil sem bloquear a UI se falhar
+           await checkUserProfile(initialSession);
+           if (mounted) setCurrentPage('dashboard');
         }
       } catch (err) {
-        console.error("Erro na sessão:", err);
-        setConnectionError(true);
+        console.error("Erro no boot:", err);
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsAppReady(true); // O app sempre fica pronto, mesmo com erro
       }
     };
 
-    initSession();
+    init();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
-      // Evita resets de estado desnecessários ao trocar de aba (eventos repetidos)
-      if (event === 'INITIAL_SESSION' && session) return;
+    // 2. Listener de Auth (NUNCA mais ativa loading screen)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      if (!mounted) return;
 
-      setSession(currentSession);
-      
+      setSession(newSession);
+
       if (event === 'SIGNED_OUT') {
         setIsAdmin(false);
         setIsApproved(false);
-        profileFetchedRef.current = false;
-        handlePageChange('home');
-      } else if (currentSession && (event === 'SIGNED_IN' || event === 'USER_UPDATED')) {
-        // Se já temos o perfil, não precisamos travar a tela
-        fetchUserProfile(currentSession.user.id, !profileFetchedRef.current);
-        
-        if (!recoveryModeRef.current && (currentPageRef.current === 'login' || currentPageRef.current === 'signup')) {
-          handlePageChange('dashboard');
-        }
+        setCurrentPage('home');
+      } 
+      else if (newSession) {
+        // Apenas atualiza permissões em background
+        checkUserProfile(newSession);
       }
     });
 
     return () => {
+      mounted = false;
+      clearTimeout(safetyTimer);
       subscription.unsubscribe();
     };
   }, []);
 
-  const handlePageChange = (page: PageType) => {
-    setCurrentPage(page);
-    currentPageRef.current = page;
-  };
-
-  const fetchUserProfile = async (userId: string, shouldShowLoading: boolean = false) => {
-    // Só mostramos loading se explicitamente pedido (ex: primeira carga ou troca crítica de página)
-    if (shouldShowLoading) setIsProfileLoading(true);
-    
+  // Busca perfil e define permissões
+  const checkUserProfile = async (currentSession: Session) => {
     try {
-      const { data, error } = await supabase.from('profiles').select('role, has_purchased').eq('id', userId).single();
-      
-      if (error && error.code === 'PGRST116') {
-        // Retry rápido para novos usuários
-        await new Promise(res => setTimeout(res, 500));
-        const { data: retryData } = await supabase.from('profiles').select('role, has_purchased').eq('id', userId).single();
-        if (retryData) {
-          setIsAdmin(retryData.role === 'admin');
-          setIsApproved(retryData.role === 'admin' ? true : !!retryData.has_purchased);
-          profileFetchedRef.current = true;
-          return;
-        }
+      const userEmail = currentSession.user.email;
+      const isMaster = userEmail === ADMIN_EMAIL;
+
+      // Se for master, já libera admin visualmente para ser rápido
+      if (isMaster) {
+        setIsAdmin(true);
+        setIsApproved(true);
       }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role, has_purchased, accessible_modules')
+        .eq('id', currentSession.user.id)
+        .single();
       
+      // Se não existir, cria perfil básico (Fail-safe)
+      if (error && error.code === 'PGRST116') {
+         await supabase.from('profiles').upsert({
+            id: currentSession.user.id,
+            email: userEmail,
+            name: currentSession.user.user_metadata?.full_name || 'Operador',
+            role: isMaster ? 'admin' : 'student',
+            has_purchased: isMaster
+         });
+         // Chama recursivamente para pegar os dados criados
+         return checkUserProfile(currentSession);
+      }
+
       if (data) {
-        setIsAdmin(data.role === 'admin');
-        setIsApproved(data.role === 'admin' ? true : !!data.has_purchased);
-        profileFetchedRef.current = true;
+        const userIsAdmin = isMaster || data.role === 'admin';
+        setIsAdmin(userIsAdmin);
+        setIsApproved(userIsAdmin || data.has_purchased === true || (data.accessible_modules && data.accessible_modules.length > 0));
       }
     } catch (err) {
-      console.error("Erro perfil:", err);
-    } finally {
-      if (shouldShowLoading) setIsProfileLoading(false);
+      console.error("Erro check profile:", err);
     }
   };
 
   const handleLogout = async () => {
+    await supabase.auth.signOut();
+    // O listener cuida do resto
+  };
+
+  const handleSelectPlan = (planId: string, price: number, name: string) => {
+    if (!session) { setCurrentPage('login'); return; }
+    setSelectedPlan({ id: planId, price, name });
+    setCurrentPage('checkout');
+  };
+
+  const handlePaymentSuccess = async () => {
+    if (!session || !selectedPlan) return;
+    
+    // Pequeno loading local apenas no checkout
     try {
-      setSession(null);
-      setIsAdmin(false);
-      setIsApproved(false);
-      profileFetchedRef.current = false;
-      await supabase.auth.signOut();
-      handlePageChange('home');
+      let updatePayload = selectedPlan.id === 'start' 
+        ? { has_purchased: false, accessible_modules: ['m1', 'm2', 'm3', 'm4'] }
+        : { has_purchased: true, accessible_modules: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'] };
+
+      await supabase.from('profiles').update(updatePayload).eq('id', session.user.id);
+      await checkUserProfile(session);
+      setRefreshKey(p => p + 1);
+      setShowSuccessModal(true);
+      setCurrentPage('dashboard');
     } catch (err) {
-      window.location.reload();
+      console.error("Erro pagamento:", err);
     }
   };
 
-  const navigateToDashboard = async () => {
-    handlePageChange('dashboard');
-    if (session) fetchUserProfile(session.user.id, !profileFetchedRef.current);
-  };
+  // --- RENDERIZAÇÃO ---
 
-  // isLoading só é true no PRIMEIRO carregamento da página
-  if (isLoading) {
+  // Tela de Loading Inicial (Só aparece no boot)
+  if (!isAppReady) {
     return (
-      <div className="min-h-screen bg-[#0F1012] flex flex-col items-center justify-center text-[#eeb32d] p-6">
-        <div className="relative">
-          <Loader2 className="animate-spin w-16 h-16 opacity-80" />
-          <div className="absolute inset-0 bg-[#eeb32d]/20 blur-2xl rounded-full animate-pulse"></div>
-        </div>
-        <div className="mt-10 text-center space-y-3">
-          <p className="font-display font-bold uppercase tracking-[0.3em] text-sm animate-pulse">Sincronizando com o QG</p>
-          <p className="text-gray-500 text-xs uppercase tracking-widest opacity-60">Autenticando credenciais...</p>
-        </div>
+      <div className="min-h-screen bg-[#0F1012] flex flex-col items-center justify-center text-[#eeb32d] p-4 text-center">
+        <Loader2 className="animate-spin w-8 h-8 mb-4 opacity-50" />
+        <p className="text-xs font-bold uppercase tracking-widest text-gray-500 animate-pulse">
+          Iniciando Sistema...
+        </p>
+        
+        {showResetOption && (
+          <div className="mt-8 animate-fade-in-up">
+            <button 
+              onClick={handleAppReset}
+              className="bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 px-6 py-3 rounded-lg flex items-center gap-2 text-xs font-black uppercase tracking-widest transition-all"
+            >
+              <RefreshCw size={14} /> Reiniciar Aplicação
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
-  // Se estivermos no dashboard/admin e o perfil AINDA não foi pego NENHUMA vez, mostramos loading
-  // Mas se profileFetchedRef for true, não bloqueamos mais, mesmo que isProfileLoading seja true (atualização em background)
-  if (!profileFetchedRef.current && isProfileLoading && (currentPage === 'dashboard' || currentPage === 'admin')) {
+  // Rotas Protegidas
+  if (currentPage === 'admin' && session && isAdmin) {
+    return <AdminPanel onLogout={handleLogout} onBack={() => { setCurrentPage('dashboard'); window.scrollTo(0,0); }} />;
+  }
+
+  if (currentPage === 'dashboard' && session) {
     return (
-      <div className="min-h-screen bg-[#0F1012] flex flex-col items-center justify-center text-[#eeb32d] p-6">
-        <Loader2 className="animate-spin w-16 h-16 mb-10" />
-        <p className="font-display font-bold uppercase tracking-[0.3em] text-sm">Validando Licença...</p>
-      </div>
+      <>
+        <CustomModal 
+          isOpen={showSuccessModal}
+          title="ACESSO CONCEDIDO"
+          message="Arsenal tático atualizado com sucesso."
+          confirmLabel="ENTRAR"
+          variant="info"
+          onConfirm={() => setShowSuccessModal(false)}
+          onCancel={() => setShowSuccessModal(false)}
+        />
+        <Dashboard 
+          session={session} 
+          onLogout={handleLogout} 
+          isAdmin={isAdmin} 
+          isApproved={isApproved} 
+          refreshKey={refreshKey}
+          onNavigateToAdmin={() => setCurrentPage('admin')} 
+          onNavigateToPlans={() => setCurrentPage('plans')} 
+        />
+      </>
     );
   }
 
-  if (connectionError && currentPage === 'dashboard') {
-    return (
-      <div className="min-h-screen bg-[#0F1012] flex flex-col items-center justify-center text-center p-6">
-        <WifiOff size={64} className="text-gray-700 mb-8" />
-        <h2 className="text-2xl font-display font-bold uppercase text-white mb-3">Erro de Conexão</h2>
-        <button onClick={() => window.location.reload()} className="bg-[#eeb32d] text-black font-bold px-10 py-4 rounded uppercase text-sm tracking-widest transition-transform shadow-lg shadow-[#eeb32d]/20">Tentar Novamente</button>
-      </div>
-    );
-  }
-
-  if (currentPage === 'admin' && session && isAdmin) return <AdminPanel onLogout={handleLogout} onBack={() => handlePageChange('dashboard')} />;
-  if (currentPage === 'dashboard' && session) return <Dashboard session={session} onLogout={handleLogout} isAdmin={isAdmin} isApproved={isApproved} onNavigateToAdmin={() => handlePageChange('admin')} onNavigateToPlans={() => handlePageChange('plans')} />;
-
+  // Rotas Públicas
   return (
-    <div className="min-h-screen bg-[#0F1012] text-white selection:bg-[#eeb32d] selection:text-black overflow-x-hidden flex flex-col">
-      <Navbar onNavigate={(page) => { setIsRecoveryMode(false); if (page === 'dashboard') navigateToDashboard(); else handlePageChange(page as PageType); }} activePage={currentPage} session={isRecoveryMode ? null : session} onLogout={handleLogout} />
+    <div className="min-h-screen bg-[#0F1012] text-white selection:bg-[#eeb32d] selection:text-black flex flex-col">
+      <Navbar 
+        onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} 
+        activePage={currentPage} 
+        session={session} 
+        onLogout={handleLogout} 
+      />
+      
       <main className="flex-grow">
-        {currentPage === 'home' && <div className="animate-fade-in"><Hero onNavigate={(page) => { if (page === 'dashboard') navigateToDashboard(); else handlePageChange(page as PageType); }} /><StatsBar /><Testimonials /><EvolutionCTA onNavigate={(page) => handlePageChange(page as PageType)} /><FAQ /></div>}
-        {currentPage === 'course' && <div className="animate-fade-in-up pt-10"><MissionBriefing /><CourseCurriculum onNavigate={(page) => handlePageChange(page as PageType)} /></div>}
-        {currentPage === 'plans' && <div className="animate-fade-in-up pt-20"><Plans /></div>}
-        {currentPage === 'login' && <div className="animate-fade-in-up pt-20"><Login onNavigate={(page) => { if (page === 'dashboard') navigateToDashboard(); else handlePageChange(page as PageType); }} onRecoveryModeChange={setIsRecoveryMode} /></div>}
-        {currentPage === 'signup' && <div className="animate-fade-in-up pt-20"><Signup onNavigate={(page) => handlePageChange(page as PageType)} /></div>}
+        {currentPage === 'home' && <div className="animate-fade-in"><Hero onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} /><StatsBar /><Testimonials /><EvolutionCTA onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} /><FAQ /></div>}
+        {currentPage === 'course' && <div className="pt-20"><CourseCurriculum onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} /><MissionBriefing /></div>}
+        {currentPage === 'plans' && <div className="pt-20"><Plans onSelectPlan={handleSelectPlan} /></div>}
+        {currentPage === 'login' && <div className="pt-20"><Login onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} /></div>}
+        {currentPage === 'signup' && <div className="pt-20"><Signup onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} /></div>}
+        {currentPage === 'checkout' && selectedPlan && session && (
+          <Checkout planId={selectedPlan.id} planName={selectedPlan.name} price={selectedPlan.price} session={session} onBack={() => setCurrentPage('plans')} onSuccess={handlePaymentSuccess} />
+        )}
       </main>
       <Footer />
     </div>
