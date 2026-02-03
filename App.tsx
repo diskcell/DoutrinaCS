@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { Loader2, RefreshCw } from 'lucide-react';
@@ -19,10 +18,11 @@ import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
 import Checkout from './components/Checkout';
 import CustomModal from './components/CustomModal';
+import About from './components/About'; // Importa a página Sobre
 
-type PageType = 'home' | 'course' | 'plans' | 'login' | 'signup' | 'dashboard' | 'admin' | 'checkout';
+type PageType = 'home' | 'course' | 'plans' | 'login' | 'signup' | 'dashboard' | 'admin' | 'checkout' | 'about';
 
-const ADMIN_EMAIL = 'jefersonjjjj24@gmail.com';
+// VERSÃO SEGURA: O Admin é definido pelo Banco de Dados, não por e-mail fixo aqui.
 
 function App() {
   const [currentPage, setCurrentPage] = useState<PageType>('home');
@@ -30,7 +30,6 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isApproved, setIsApproved] = useState(false);
   
-  // isLoading começa true e vira false APENAS UMA VEZ na vida do app
   const [isAppReady, setIsAppReady] = useState(false);
   const [showResetOption, setShowResetOption] = useState(false);
   
@@ -38,7 +37,6 @@ function App() {
   const [selectedPlan, setSelectedPlan] = useState<{id: string, price: number, name: string} | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // --- FUNÇÃO DE RESET DE EMERGÊNCIA ---
   const handleAppReset = async () => {
     try {
       localStorage.clear();
@@ -48,11 +46,9 @@ function App() {
     window.location.reload();
   };
 
-  // --- BOOTSTRAP DO SISTEMA ---
   useEffect(() => {
     let mounted = true;
 
-    // Timeout de segurança: Se travar por 5s, mostra botão de reset
     const safetyTimer = setTimeout(() => {
       if (!isAppReady) setShowResetOption(true);
     }, 5000);
@@ -64,25 +60,22 @@ function App() {
       }
 
       try {
-        // 1. Pega sessão inicial
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         
         if (initialSession) {
            setSession(initialSession);
-           // Busca perfil sem bloquear a UI se falhar
            await checkUserProfile(initialSession);
            if (mounted) setCurrentPage('dashboard');
         }
       } catch (err) {
         console.error("Erro no boot:", err);
       } finally {
-        if (mounted) setIsAppReady(true); // O app sempre fica pronto, mesmo com erro
+        if (mounted) setIsAppReady(true);
       }
     };
 
     init();
 
-    // 2. Listener de Auth (NUNCA mais ativa loading screen)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, newSession) => {
       if (!mounted) return;
 
@@ -94,7 +87,6 @@ function App() {
         setCurrentPage('home');
       } 
       else if (newSession) {
-        // Apenas atualiza permissões em background
         checkUserProfile(newSession);
       }
     });
@@ -106,39 +98,30 @@ function App() {
     };
   }, []);
 
-  // Busca perfil e define permissões
   const checkUserProfile = async (currentSession: Session) => {
     try {
-      const userEmail = currentSession.user.email;
-      const isMaster = userEmail === ADMIN_EMAIL;
-
-      // Se for master, já libera admin visualmente para ser rápido
-      if (isMaster) {
-        setIsAdmin(true);
-        setIsApproved(true);
-      }
-
+      // PERGUNTA AO BANCO: "Quem é esse usuário?"
       const { data, error } = await supabase
         .from('profiles')
         .select('role, has_purchased, accessible_modules')
         .eq('id', currentSession.user.id)
         .single();
       
-      // Se não existir, cria perfil básico (Fail-safe)
+      // Se não existir, cria perfil básico
       if (error && error.code === 'PGRST116') {
          await supabase.from('profiles').upsert({
             id: currentSession.user.id,
-            email: userEmail,
+            email: currentSession.user.email,
             name: currentSession.user.user_metadata?.full_name || 'Operador',
-            role: isMaster ? 'admin' : 'student',
-            has_purchased: isMaster
+            role: 'student',
+            has_purchased: false
          });
-         // Chama recursivamente para pegar os dados criados
          return checkUserProfile(currentSession);
       }
 
       if (data) {
-        const userIsAdmin = isMaster || data.role === 'admin';
+        // Se o banco disser que a role é 'admin', libera o painel
+        const userIsAdmin = data.role === 'admin';
         setIsAdmin(userIsAdmin);
         setIsApproved(userIsAdmin || data.has_purchased === true || (data.accessible_modules && data.accessible_modules.length > 0));
       }
@@ -149,7 +132,6 @@ function App() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // O listener cuida do resto
   };
 
   const handleSelectPlan = (planId: string, price: number, name: string) => {
@@ -161,7 +143,6 @@ function App() {
   const handlePaymentSuccess = async () => {
     if (!session || !selectedPlan) return;
     
-    // Pequeno loading local apenas no checkout
     try {
       let updatePayload = selectedPlan.id === 'start' 
         ? { has_purchased: false, accessible_modules: ['m1', 'm2', 'm3', 'm4'] }
@@ -177,9 +158,6 @@ function App() {
     }
   };
 
-  // --- RENDERIZAÇÃO ---
-
-  // Tela de Loading Inicial (Só aparece no boot)
   if (!isAppReady) {
     return (
       <div className="min-h-screen bg-[#0F1012] flex flex-col items-center justify-center text-[#eeb32d] p-4 text-center">
@@ -202,7 +180,6 @@ function App() {
     );
   }
 
-  // Rotas Protegidas
   if (currentPage === 'admin' && session && isAdmin) {
     return <AdminPanel onLogout={handleLogout} onBack={() => { setCurrentPage('dashboard'); window.scrollTo(0,0); }} />;
   }
@@ -232,7 +209,6 @@ function App() {
     );
   }
 
-  // Rotas Públicas
   return (
     <div className="min-h-screen bg-[#0F1012] text-white selection:bg-[#eeb32d] selection:text-black flex flex-col">
       <Navbar 
@@ -250,6 +226,12 @@ function App() {
         {currentPage === 'signup' && <div className="pt-20"><Signup onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} /></div>}
         {currentPage === 'checkout' && selectedPlan && session && (
           <Checkout planId={selectedPlan.id} planName={selectedPlan.name} price={selectedPlan.price} session={session} onBack={() => setCurrentPage('plans')} onSuccess={handlePaymentSuccess} />
+        )}
+        
+        {currentPage === 'about' && (
+           <div className="animate-fade-in">
+             <About onNavigate={(p) => { setCurrentPage(p as PageType); window.scrollTo(0,0); }} />
+           </div>
         )}
       </main>
       <Footer />

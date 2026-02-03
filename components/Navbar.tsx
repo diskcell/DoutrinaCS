@@ -24,6 +24,7 @@ const Navbar: React.FC<NavbarProps> = ({ onNavigate, activePage, session, onLogo
   const navLinks = [
     { name: 'Home', value: 'home' },
     { name: 'O Curso', value: 'course' },
+    { name: 'Sobre', value: 'about' }, // <--- ADICIONEI AQUI
     { name: 'Planos', value: 'plans' },
   ];
 
