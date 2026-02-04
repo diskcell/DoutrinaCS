@@ -61,7 +61,14 @@ function App() {
   // ------------------------------
   // ESTADO DE NAVEGAÇÃO
   // ------------------------------
-  const [currentPage, setCurrentPage] = useState<PageType>('home')
+  const [currentPage, setCurrentPage] = useState<PageType>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      const validRoutes = ['home', 'course', 'plans', 'login', 'signup', 'dashboard', 'admin', 'checkout', 'about', 'terms', 'privacy'];
+      if (validRoutes.includes(hash)) return hash as PageType;
+    }
+    return 'home';
+  })
 
   // ------------------------------
   // AUTENTICAÇÃO / PERFIL
@@ -89,12 +96,17 @@ function App() {
   const [showSuccessModal, setShowSuccessModal] = useState(false)
 
   // ==============================
-  // [NOVO] PERSISTÊNCIA DE PÁGINA
+  // PERSISTÊNCIA E URL (HASH)
   // ==============================
-  // Salva a página atual no navegador sempre que ela mudar
   useEffect(() => {
-    if (currentPage && currentPage !== 'login' && currentPage !== 'signup' && currentPage !== 'home') {
+    if (currentPage && !['login', 'signup', 'home', 'terms', 'privacy'].includes(currentPage)) {
       localStorage.setItem('doutrina_last_page', currentPage)
+    }
+
+    if (currentPage === 'home') {
+       window.location.hash = '';
+    } else {
+       window.location.hash = `/${currentPage}`;
     }
   }, [currentPage])
 
@@ -118,7 +130,6 @@ function App() {
   }
 
   const handleLogout = async () => {
-    // [NOVO] Limpa a memória ao sair para não bugar o próximo login
     localStorage.removeItem('doutrina_last_page')
     localStorage.removeItem('doutrina_active_lesson')
     await supabase.auth.signOut()
@@ -135,13 +146,11 @@ function App() {
         .eq('id', currentSession.user.id)
         .single()
 
-      // Cria perfil se não existir
       if (error && error.code === 'PGRST116') {
         await supabase.from('profiles').upsert({
           id: currentSession.user.id,
           email: currentSession.user.email,
-          name:
-            currentSession.user.user_metadata?.full_name || 'Operador',
+          name: currentSession.user.user_metadata?.full_name || 'Operador',
           role: 'student',
           has_purchased: false,
         })
@@ -151,12 +160,10 @@ function App() {
       if (data) {
         const admin = data.role === 'admin'
         setIsAdmin(admin)
-
         setIsApproved(
           admin ||
             data.has_purchased === true ||
-            (data.accessible_modules &&
-              data.accessible_modules.length > 0)
+            (data.accessible_modules && data.accessible_modules.length > 0)
         )
       }
     } catch (err) {
@@ -165,7 +172,7 @@ function App() {
   }
 
   // ==============================
-  // BOOTSTRAP DA APLICAÇÃO
+  // BOOTSTRAP (INICIALIZAÇÃO)
   // ==============================
   useEffect(() => {
     let mounted = true
@@ -181,23 +188,41 @@ function App() {
       }
 
       try {
-        const {
-          data: { session: initialSession },
-        } = await supabase.auth.getSession()
+        const { data: { session: initialSession } } = await supabase.auth.getSession()
 
         if (initialSession) {
           setSession(initialSession)
           await checkUserProfile(initialSession)
-          
-          // [MODIFICADO] Lógica de Restauração Segura
-          // Em vez de forçar 'dashboard', tenta recuperar a última página
-          const savedPage = localStorage.getItem('doutrina_last_page') as PageType
-          if (savedPage && savedPage !== 'login' && savedPage !== 'signup' && savedPage !== 'home') {
-             navigate(savedPage)
-          } else {
-             navigate('dashboard')
-          }
         }
+
+        if (mounted) {
+          const hashPath = window.location.hash.replace(/^#\/?/, '') as PageType;
+          const validRoutes = ['home', 'course', 'plans', 'login', 'signup', 'dashboard', 'admin', 'checkout', 'about', 'terms', 'privacy'];
+          
+          let targetPage: PageType = currentPage;
+
+          if (validRoutes.includes(hashPath)) {
+             targetPage = hashPath;
+          } else if (initialSession) {
+             const savedPage = localStorage.getItem('doutrina_last_page') as PageType;
+             if (savedPage && validRoutes.includes(savedPage)) {
+                targetPage = savedPage;
+             } else {
+                targetPage = 'dashboard';
+             }
+          }
+
+          if (!initialSession && ['dashboard', 'admin', 'checkout'].includes(targetPage)) {
+             targetPage = 'login';
+          }
+
+          if (initialSession && ['login', 'signup'].includes(targetPage)) {
+             targetPage = 'dashboard';
+          }
+
+          setCurrentPage(targetPage);
+        }
+
       } catch (err) {
         console.error('Erro no boot:', err)
       } finally {
@@ -207,21 +232,16 @@ function App() {
 
     init()
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         if (!mounted) return
-
         setSession(newSession)
 
         if (event === 'SIGNED_OUT') {
           setIsAdmin(false)
           setIsApproved(false)
           navigate('home')
-        }
-
-        if (newSession) {
+        } else if (newSession) {
           checkUserProfile(newSession)
         }
       }
@@ -237,62 +257,27 @@ function App() {
   // ==============================
   // PAGAMENTO
   // ==============================
-  const handleSelectPlan = (
-    planId: string,
-    price: number,
-    name: string
-  ) => {
-    if (!session) {
-      navigate('login')
-      return
-    }
-
+  const handleSelectPlan = (planId: string, price: number, name: string) => {
+    if (!session) { navigate('login'); return }
     setSelectedPlan({ id: planId, price, name })
     navigate('checkout')
   }
 
   const handlePaymentSuccess = async () => {
     if (!session || !selectedPlan) return
-
     try {
-      const payload =
-        selectedPlan.id === 'start'
-          ? {
-              has_purchased: false,
-              accessible_modules: ['m1', 'm2', 'm3', 'm4'],
-            }
-          : {
-              has_purchased: true,
-              accessible_modules: [
-                'm1',
-                'm2',
-                'm3',
-                'm4',
-                'm5',
-                'm6',
-                'm7',
-                'm8',
-              ],
-            }
+      const payload = selectedPlan.id === 'start'
+          ? { has_purchased: false, accessible_modules: ['m1', 'm2', 'm3', 'm4'] }
+          : { has_purchased: true, accessible_modules: ['m1', 'm2', 'm3', 'm4', 'm5', 'm6', 'm7', 'm8'] }
 
-      await supabase
-        .from('profiles')
-        .update(payload)
-        .eq('id', session.user.id)
-
+      await supabase.from('profiles').update(payload).eq('id', session.user.id)
       await checkUserProfile(session)
-
       setRefreshKey((p) => p + 1)
       setShowSuccessModal(true)
       navigate('dashboard')
-    } catch (err) {
-      console.error('Erro pagamento:', err)
-    }
+    } catch (err) { console.error('Erro pagamento:', err) }
   }
 
-  // ==============================
-  // LOADING
-  // ==============================
   if (!isAppReady) {
     return (
       <div className="min-h-screen bg-[#0F1012] flex flex-col items-center justify-center text-[#eeb32d] p-4 text-center">
@@ -300,69 +285,31 @@ function App() {
         <p className="text-xs font-bold uppercase tracking-widest text-gray-500 animate-pulse">
           Iniciando Sistema...
         </p>
-
         {showResetOption && (
-          <button
-            onClick={handleAppReset}
-            className="mt-8 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 px-6 py-3 rounded-lg flex items-center gap-2 text-xs font-black uppercase tracking-widest transition-all"
-          >
-            <RefreshCw size={14} />
-            Reiniciar Aplicação
+          <button onClick={handleAppReset} className="mt-8 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-500 px-6 py-3 rounded-lg flex items-center gap-2 text-xs font-black uppercase tracking-widest transition-all">
+            <RefreshCw size={14} /> Reiniciar Aplicação
           </button>
         )}
       </div>
     )
   }
 
-  // ==============================
-  // ROTAS PRIVADAS
-  // ==============================
   if (currentPage === 'admin' && session && isAdmin) {
-    return (
-      <AdminPanel
-        onLogout={handleLogout}
-        onBack={() => navigate('dashboard')}
-      />
-    )
+    return <AdminPanel onLogout={handleLogout} onBack={() => navigate('dashboard')} />
   }
 
   if (currentPage === 'dashboard' && session) {
     return (
       <>
-        <CustomModal
-          isOpen={showSuccessModal}
-          title="ACESSO CONCEDIDO"
-          message="Arsenal tático atualizado com sucesso."
-          confirmLabel="ENTRAR"
-          variant="info"
-          onConfirm={() => setShowSuccessModal(false)}
-          onCancel={() => setShowSuccessModal(false)}
-        />
-
-        <Dashboard
-          session={session}
-          onLogout={handleLogout}
-          isAdmin={isAdmin}
-          isApproved={isApproved}
-          refreshKey={refreshKey}
-          onNavigateToAdmin={() => navigate('admin')}
-          onNavigateToPlans={() => navigate('plans')}
-        />
+        <CustomModal isOpen={showSuccessModal} title="ACESSO CONCEDIDO" message="Arsenal tático atualizado com sucesso." confirmLabel="ENTRAR" variant="info" onConfirm={() => setShowSuccessModal(false)} onCancel={() => setShowSuccessModal(false)} />
+        <Dashboard session={session} onLogout={handleLogout} isAdmin={isAdmin} isApproved={isApproved} refreshKey={refreshKey} onNavigateToAdmin={() => navigate('admin')} onNavigateToPlans={() => navigate('plans')} />
       </>
     )
   }
 
-  // ==============================
-  // PÁGINAS PÚBLICAS
-  // ==============================
   return (
     <div className="min-h-screen bg-[#0F1012] text-white flex flex-col">
-      <Navbar
-        activePage={currentPage}
-        session={session}
-        onLogout={handleLogout}
-        onNavigate={(p) => navigate(p as PageType)}
-      />
+      <Navbar activePage={currentPage} session={session} onLogout={handleLogout} onNavigate={(p) => navigate(p as PageType)} />
 
       <main className="flex-grow">
         {currentPage === 'home' && (
@@ -370,68 +317,23 @@ function App() {
             <Hero onNavigate={(p) => navigate(p as PageType)} />
             <StatsBar />
             <Testimonials />
-            <EvolutionCTA
-              onNavigate={(p) => navigate(p as PageType)}
-            />
+            <EvolutionCTA onNavigate={(p) => navigate(p as PageType)} />
             <FAQ />
           </>
         )}
 
-        {currentPage === 'course' && (
-          <div className="pt-20">
-            <CourseCurriculum
-              onNavigate={(p) => navigate(p as PageType)}
-            />
-            <MissionBriefing />
-          </div>
+        {currentPage === 'course' && <div className="pt-20"><CourseCurriculum onNavigate={(p) => navigate(p as PageType)} /><MissionBriefing /></div>}
+        {currentPage === 'plans' && <div className="pt-20"><Plans onSelectPlan={handleSelectPlan} /></div>}
+        {currentPage === 'login' && <div className="pt-20"><Login onNavigate={(p) => navigate(p as PageType)} /></div>}
+        {currentPage === 'signup' && <div className="pt-20"><Signup onNavigate={(p) => navigate(p as PageType)} /></div>}
+        
+        {currentPage === 'checkout' && selectedPlan && session && (
+            <Checkout planId={selectedPlan.id} planName={selectedPlan.name} price={selectedPlan.price} session={session} onBack={() => navigate('plans')} onSuccess={handlePaymentSuccess} />
         )}
 
-        {currentPage === 'plans' && (
-          <div className="pt-20">
-            <Plans onSelectPlan={handleSelectPlan} />
-          </div>
-        )}
-
-        {currentPage === 'login' && (
-          <div className="pt-20">
-            <Login
-              onNavigate={(p) => navigate(p as PageType)}
-            />
-          </div>
-        )}
-
-        {currentPage === 'signup' && (
-          <div className="pt-20">
-            <Signup
-              onNavigate={(p) => navigate(p as PageType)}
-            />
-          </div>
-        )}
-
-        {currentPage === 'checkout' &&
-          selectedPlan &&
-          session && (
-            <Checkout
-              planId={selectedPlan.id}
-              planName={selectedPlan.name}
-              price={selectedPlan.price}
-              session={session}
-              onBack={() => navigate('plans')}
-              onSuccess={handlePaymentSuccess}
-            />
-          )}
-
-        {currentPage === 'about' && (
-          <About onNavigate={(p) => navigate(p as PageType)} />
-        )}
-
-        {currentPage === 'terms' && (
-          <TermsOfUse onNavigate={(p) => navigate(p as PageType)} />
-        )}
-
-        {currentPage === 'privacy' && (
-          <PrivacyPolicy onNavigate={(p) => navigate(p as PageType)} />
-        )}
+        {currentPage === 'about' && <div className="animate-fade-in"><About onNavigate={(p) => navigate(p as PageType)} /></div>}
+        {currentPage === 'terms' && <div className="animate-fade-in"><TermsOfUse onNavigate={(p) => navigate(p as PageType)} /></div>}
+        {currentPage === 'privacy' && <div className="animate-fade-in"><PrivacyPolicy onNavigate={(p) => navigate(p as PageType)} /></div>}
       </main>
 
       <Footer onNavigate={(p) => navigate(p as PageType)} />

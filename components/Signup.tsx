@@ -99,7 +99,7 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
           ]);
         }
 
-        alert('Operação bem sucedida! Arsenal criado.');
+        alert('Conta criada com sucesso! Arsenal preparado.');
         onNavigate('login');
 
       } catch (error: any) {
@@ -118,6 +118,14 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
     }
   };
 
+  const handleOpenLegal = (page: string) => {
+    // Abre em uma nova aba usando o sistema de rotas por Hash que configuramos no App.tsx
+    // Garantindo que a URL inclua o pathname correto para ambientes de subdiretório (como GH Pages)
+    const baseUrl = window.location.origin + window.location.pathname;
+    const url = baseUrl.endsWith('/') ? `${baseUrl}#/${page}` : `${baseUrl}/#/${page}`;
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="min-h-[90vh] flex items-center justify-center relative px-4 py-10">
        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] opacity-30 pointer-events-none"></div>
@@ -127,7 +135,7 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
           
           <div className="text-center mb-8">
             <h2 className="text-3xl font-display font-bold text-white uppercase italic tracking-tighter">
-              Alistar <span className="text-[#eeb32d]">Operador</span>
+              Criar <span className="text-[#eeb32d]">Conta</span>
             </h2>
             <p className="text-gray-500 text-xs mt-2 uppercase font-bold tracking-widest">Recrutamento para a Elite do CS2</p>
           </div>
@@ -197,9 +205,9 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
                   <div className="flex-1">
                      <p className="text-[11px] text-gray-400 leading-tight">
                         Li e concordo com os{' '}
-                        <button type="button" onClick={() => window.open('/DoutrinaCS/#/terms', '_blank')} className="text-[#eeb32d] font-bold hover:underline inline-flex items-center gap-1">Termos de Uso <ExternalLink size={10}/></button>
+                        <button type="button" onClick={() => handleOpenLegal('terms')} className="text-[#eeb32d] font-bold hover:underline inline-flex items-center gap-1">Termos de Uso <ExternalLink size={10}/></button>
                         {' '}e a{' '}
-                        <button type="button" onClick={() => window.open('/DoutrinaCS/#/privacy', '_blank')} className="text-[#eeb32d] font-bold hover:underline inline-flex items-center gap-1">Política de Privacidade <ExternalLink size={10}/></button>.
+                        <button type="button" onClick={() => handleOpenLegal('privacy')} className="text-[#eeb32d] font-bold hover:underline inline-flex items-center gap-1">Política de Privacidade <ExternalLink size={10}/></button>.
                      </p>
                   </div>
                </label>
@@ -214,7 +222,7 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
               {isLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin" />
               ) : (
-                <>CRIAR MEU ARSENAL <ArrowRight className="w-6 h-6" /></>
+                <>CRIAR CONTA <ArrowRight className="w-6 h-6" /></>
               )}
             </button>
           </form>
