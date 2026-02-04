@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabaseClient';
 import { 
   Plus, Trash2, Video, 
   ChevronDown, Loader2, AlertTriangle, ArrowLeft, LogOut, Users, RefreshCcw, Search, Pencil, X, Shield, Bell, Info, Calendar, UserCheck, AlertCircle, Settings, Lock, Unlock, CheckSquare,
-  FileText, Megaphone, Flame, Link as LinkIcon, HardDrive, Folder, FileVideo, CornerUpLeft, Image as ImageIcon
+  FileText, Megaphone, Flame, Link as LinkIcon, HardDrive, Folder, FileVideo, CornerUpLeft, Image as ImageIcon, Gavel
 } from 'lucide-react';
 import { ModuleStatus, LessonStatus, Notice, UserProfile } from '../types';
 import CustomModal from './CustomModal';
@@ -457,7 +457,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, onBack }) => {
                       </div>
                     </div>
                  </div>
-                 <button onClick={() => setIsDrivePickerOpen(false)} className="p-2 hover:bg-white/5 rounded-full text-gray-500 hover:text-white"><X size={20} /></button>
+                 <button onClick={() => setIsDrivePickerOpen(false)} className="p-2 hover:bg-white/5 rounded-full text-gray-500 hover:text-white"><X size={20}/></button>
               </div>
 
               {/* Body Drive */}
@@ -841,6 +841,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, onBack }) => {
                               <th className="p-5">Nome / Identificação</th>
                               <th className="p-5"><div className="flex items-center gap-2"><Calendar size={12}/> Ingresso</div></th>
                               <th className="p-5">Plano / Status</th>
+                              <th className="p-5">Aceite Legal</th>
                               <th className="p-5 text-right">Ação</th>
                             </tr>
                          </thead>
@@ -862,6 +863,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, onBack }) => {
                                       <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border ${planInfo.border} ${planInfo.color}`}>
                                         {planInfo.label}
                                       </span>
+                                   </td>
+                                   <td className="p-5">
+                                      {u.accepted_terms_at ? (
+                                        <div className="flex flex-col" title={`Aceitou em: ${new Date(u.accepted_terms_at).toLocaleString('pt-BR')}`}>
+                                           <div className="flex items-center gap-1.5 text-green-500 font-black text-[9px] uppercase tracking-tighter">
+                                              <Gavel size={12} /> ACEITO
+                                           </div>
+                                           <span className="text-[8px] text-gray-600 font-mono mt-0.5">
+                                              {new Date(u.accepted_terms_at).toLocaleDateString('pt-BR')}
+                                           </span>
+                                        </div>
+                                      ) : (
+                                        <div className="flex items-center gap-1.5 text-gray-700 font-black text-[9px] uppercase tracking-tighter">
+                                           <AlertCircle size={12} /> PENDENTE
+                                        </div>
+                                      )}
                                    </td>
                                    <td className="p-5 text-right">
                                       <button 

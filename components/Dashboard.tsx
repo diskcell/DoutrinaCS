@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
@@ -16,6 +15,7 @@ interface DashboardProps {
   onLogout: () => void;
   isAdmin?: boolean;
   isApproved?: boolean;
+  isCheckingProfile?: boolean; // Prop essencial
   refreshKey?: number;
   onNavigateToAdmin?: () => void;
   onNavigateToPlans?: () => void;
@@ -34,52 +34,39 @@ const MODULE_METADATA: Record<string, { subtitle: string; icon: React.ReactNode;
 
 const getNoticeStyle = (type?: string) => {
   switch(type) {
-    case 'patch': 
-      return { 
-        border: 'border-blue-500/30', 
-        text: 'text-blue-400', 
-        icon: <FileText size={12} />, 
-        label: 'PATCH' 
-      };
-    case 'alert': 
-      return { 
-        border: 'border-yellow-500/30', 
-        text: 'text-yellow-400', 
-        icon: <Megaphone size={12} />, 
-        label: 'AVISO' 
-      };
-    case 'meta': 
-      return { 
-        border: 'border-orange-500/30', 
-        text: 'text-orange-500', 
-        icon: <Flame size={12} />, 
-        label: 'META' 
-      };
-    default: 
-      return { 
-        border: 'border-white/10', 
-        text: 'text-gray-400', 
-        icon: <Info size={12} />, 
-        label: 'INFO' 
-      };
+    case 'patch': return { border: 'border-blue-500/30', text: 'text-blue-400', icon: <FileText size={12} />, label: 'PATCH' };
+    case 'alert': return { border: 'border-yellow-500/30', text: 'text-yellow-400', icon: <Megaphone size={12} />, label: 'AVISO' };
+    case 'meta': return { border: 'border-orange-500/30', text: 'text-orange-500', icon: <Flame size={12} />, label: 'META' };
+    default: return { border: 'border-white/10', text: 'text-gray-400', icon: <Info size={12} />, label: 'INFO' };
   }
 };
 
-const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = false, isApproved = false, refreshKey = 0, onNavigateToAdmin, onNavigateToPlans }) => {
+const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = false, isApproved = false, isCheckingProfile = false, refreshKey = 0, onNavigateToAdmin, onNavigateToPlans }) => {
   const [modules, setModules] = useState<ModuleStatus[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [openModuleId, setOpenModuleId] = useState<string | null>(null); 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [activeLesson, setActiveLesson] = useState<LessonStatus | null>(null);
+  
+  // Persistência da Aula
+  const [activeLesson, setActiveLesson] = useState<LessonStatus | null>(() => {
+    try {
+      const saved = localStorage.getItem('doutrina_active_lesson');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) { return null; }
+  });
+
+  useEffect(() => {
+    if (activeLesson) localStorage.setItem('doutrina_active_lesson', JSON.stringify(activeLesson));
+    else localStorage.removeItem('doutrina_active_lesson');
+  }, [activeLesson]);
+
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [completedLessonIds, setCompletedLessonIds] = useState<Set<string>>(new Set());
   const [rawModulesData, setRawModulesData] = useState<any[]>([]);
-  
   const [streakDays, setStreakDays] = useState(1);
   const [memberSince, setMemberSince] = useState<string>('');
   const [lastActivityTime, setLastActivityTime] = useState<string>('Agora mesmo');
-
   const dataLoadedRef = useRef(false);
 
   const stats = useMemo(() => {
@@ -99,16 +86,20 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
     return { progress, completed, total, rank, icon, color };
   }, [modules]);
 
+  // AQUI A MÁGICA DE DESBLOQUEIO:
   const processData = (rawData: any[], profile: UserProfile | null, doneIds: Set<string>) => {
-    const hasFullAccess = profile?.has_purchased === true;
-    const isMasterAdmin = isAdmin || profile?.role === 'admin' || session.user.email === 'jefersonjjjj24@gmail.com';
+    // Se estiver carregando, assume que é VIP (true). Se carregou, usa o valor real.
+    const accessAssumed = isCheckingProfile ? true : (profile?.has_purchased === true);
+    
+    const isMasterAdmin = isAdmin || profile?.role === 'admin' || session.user.email === 'jefersonjjjj24@gmail.com'; 
     const accessibleModules = profile?.accessible_modules || [];
 
     let previousLessonFinished = true;
     const safeData = Array.isArray(rawData) ? rawData : [];
 
     return safeData.map((mod: any) => {
-      const userHasPlanForModule = hasFullAccess || accessibleModules.includes(mod.id);
+      // Se acesso for assumido (loading), libera tudo
+      const userHasPlanForModule = accessAssumed || accessibleModules.includes(mod.id);
       const isModulePlanUnlocked = isMasterAdmin || userHasPlanForModule;
 
       const rawLessons = Array.isArray(mod.lessons) ? mod.lessons : [];
@@ -116,18 +107,17 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
       const lessons = rawLessons
         .sort((a: any, b: any) => (a.order || 0) - (b.order || 0))
         .map((l: any) => {
-          // Garantia de comparação como String para evitar divergência de tipos (int vs string)
           const isCompleted = doneIds.has(String(l.id));
           let status: 'locked' | 'completed' | 'available' = 'locked';
 
-          // Prioridade absoluta para o status concluído se estiver no Set doneIds
           if (isCompleted) {
             status = 'completed';
             previousLessonFinished = true;
           } else if (isMasterAdmin) {
             status = 'available';
           } else if (!isModulePlanUnlocked) {
-            status = 'locked';
+            // Se estiver checando, NÃO bloqueia (mostra available ou locked baseado na sequencia)
+            status = isCheckingProfile ? 'available' : 'locked';
           } else if (previousLessonFinished) {
             status = 'available';
             previousLessonFinished = false;
@@ -146,6 +136,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
       };
     });
   };
+
+  // Atualiza módulos quando o status de checagem mudar (para bloquear se for o caso)
+  useEffect(() => {
+    if (!isLoadingData && rawModulesData.length > 0) {
+        const processedModules = processData(rawModulesData, userProfile, completedLessonIds);
+        setModules(processedModules);
+    }
+  }, [isCheckingProfile, isApproved]); // Dependências cruciais
 
   const loadDashboardData = async () => {
     if (!dataLoadedRef.current) setIsLoadingData(true);
@@ -169,7 +167,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
       if (noticesRes.data) setNotices(noticesRes.data);
 
       const rawProgress = (progressRes.data as any[]) || [];
-      // Mapeia todos os IDs para String para garantir consistência na comparação
       const doneIds = new Set<string>(rawProgress.map((i: any) => String(i.lesson_id)));
       setCompletedLessonIds(doneIds);
 
@@ -203,40 +200,17 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
 
   const handleLessonComplete = async (lessonId: string) => {
     const stringId = String(lessonId);
-    
-    // 1. Atualização imediata do estado local (Otimista)
     setCompletedLessonIds((prev: Set<string>) => {
       const next = new Set<string>(prev);
       next.add(stringId);
-      
-      // Atualiza os módulos para refletir a conclusão e liberar a próxima visualmente
-      setModules(currentModules => {
-        return processData(rawModulesData, userProfile, next);
-      });
-      
+      setModules(currentModules => processData(rawModulesData, userProfile, next));
       return next;
     });
 
-    // 2. Persistência no Supabase
     try {
-      // Simplificamos o payload para apenas as chaves necessárias, garantindo compatibilidade com o esquema
-      const { error } = await supabase.from('user_progress').upsert({ 
-        user_id: session.user.id, 
-        lesson_id: stringId
-      }, { onConflict: 'user_id,lesson_id' });
-      
-      if (error) {
-        console.warn("Aviso ao salvar progresso (tentando fallback de inserção simples):", error);
-        // Fallback: Tenta insert direto caso o upsert falhe por falta de restrição unique
-        await supabase.from('user_progress').insert({ 
-          user_id: session.user.id, 
-          lesson_id: stringId
-        });
-      }
-    } catch (e) {
-      console.error("Erro crítico de persistência no banco:", e);
-    }
-
+      const { error } = await supabase.from('user_progress').upsert({ user_id: session.user.id, lesson_id: stringId }, { onConflict: 'user_id,lesson_id' });
+      if (error) await supabase.from('user_progress').insert({ user_id: session.user.id, lesson_id: stringId });
+    } catch (e) { console.error("Erro persistência:", e); }
     setLastActivityTime("Agora mesmo");
   };
 
@@ -267,13 +241,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
     />;
   }
 
-  const isUserAdmin = isAdmin || userProfile?.role === 'admin' || session.user.email === 'jefersonjjjj24@gmail.com';
+  // TRAVA VISUAL: Só mostra o bloqueio SE não estiver carregando E não for aprovado.
+  const showLockedScreen = !isCheckingProfile && !isApproved && !isAdmin && session.user.email !== 'jefersonjjjj24@gmail.com';
+  
   const displayName = userProfile?.name || session.user.user_metadata?.full_name || 'Operador';
   const nextLesson = modules.filter(m => !m.isLocked).flatMap(m => m.lessons).find(l => l.status === 'available') || null;
 
   return (
     <div className="min-h-screen bg-[#0F1012] text-white flex flex-col md:flex-row animate-fade-in overflow-x-hidden">
-      {/* Sidebar Fina */}
       <aside className={`fixed top-0 left-0 z-50 h-screen w-64 bg-[#131315] border-r border-white/5 flex flex-col md:sticky md:translate-x-0 transition-transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="p-6 border-b border-white/5 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -297,13 +272,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
         </div>
 
         <nav className="flex-1 p-4 space-y-1">
-          {isUserAdmin && (
+          {(isAdmin || (!isCheckingProfile && userProfile?.role === 'admin')) && (
             <button onClick={onNavigateToAdmin} className="w-full flex items-center gap-3 px-4 py-3 rounded bg-red-600/10 text-red-500 font-black border border-red-500/20 mb-4 hover:bg-red-600 hover:text-white transition-all text-[10px] uppercase tracking-widest">
               <Settings size={16} /> Admin Panel
             </button>
           )}
           <button className="w-full flex items-center gap-3 px-4 py-3 rounded bg-[#eeb32d]/10 text-[#eeb32d] border border-[#eeb32d]/20 text-[10px] font-bold uppercase tracking-widest"><Home size={16} /> Dashboard</button>
-          {!isApproved && !isUserAdmin && (
+          {showLockedScreen && (
              <button onClick={onNavigateToPlans} className="w-full flex items-center gap-3 px-4 py-3 rounded bg-green-600/10 text-green-500 border border-green-500/20 text-[10px] font-bold uppercase tracking-widest mt-2 animate-pulse"><Zap size={16} /> Ativar Arsenal</button>
           )}
         </nav>
@@ -313,7 +288,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
         </div>
       </aside>
 
-      {/* Main Content Area */}
       <main className="flex-1 p-6 md:p-10 max-w-[1600px] mx-auto w-full space-y-8 pb-20">
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="md:hidden"><button onClick={() => setIsMobileMenuOpen(true)} className="p-2 bg-[#131315] rounded border border-white/5"><Menu size={20} /></button></div>
@@ -340,14 +314,14 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
 
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
           <div className="xl:col-span-8 space-y-8">
-            {!isApproved && !isUserAdmin ? (
+            {showLockedScreen ? (
                <div className="relative rounded-2xl overflow-hidden border border-red-500/20 p-8 md:p-10 bg-gradient-to-r from-red-600/5 to-[#131315] shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
                   <div className="space-y-4 relative z-10">
-                     <div className="inline-block bg-red-600 text-white text-[8px] font-black uppercase px-3 py-0.5 rounded-full">Acesso Negado</div>
-                     <h2 className="text-3xl md:text-5xl font-display font-black uppercase italic text-white leading-none tracking-tighter">Arsenal <br/>Bloqueado.</h2>
-                     <button onClick={onNavigateToPlans} className="bg-red-600 hover:bg-red-700 text-white font-black px-8 py-3 rounded-lg transition-all hover:scale-105 flex items-center gap-3 uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20">
-                       Liberar Arsenal <ChevronRight size={16} />
-                     </button>
+                      <div className="inline-block bg-red-600 text-white text-[8px] font-black uppercase px-3 py-0.5 rounded-full">Acesso Negado</div>
+                      <h2 className="text-3xl md:text-5xl font-display font-black uppercase italic text-white leading-none tracking-tighter">Arsenal <br/>Bloqueado.</h2>
+                      <button onClick={onNavigateToPlans} className="bg-red-600 hover:bg-red-700 text-white font-black px-8 py-3 rounded-lg transition-all hover:scale-105 flex items-center gap-3 uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20">
+                        Liberar Arsenal <ChevronRight size={16} />
+                      </button>
                   </div>
                   <Lock size={120} className="text-white/5 absolute right-4 bottom-4 md:relative opacity-20" />
                </div>
@@ -396,7 +370,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
                     modules.map((m) => {
                       const meta = MODULE_METADATA[m.id] || { subtitle: "Operacional", icon: <Zap size={20}/>, description: "Protocolo padrão." };
                       const isOpen = openModuleId === m.id;
-                      const locked = m.isLocked && !isUserAdmin;
+                      
+                      // TRAVA VISUAL: Se estiver checando perfil, NÃO trava.
+                      const locked = (isCheckingProfile ? false : m.isLocked) && !isAdmin;
 
                       return (
                         <div key={m.id} className="relative z-10">
@@ -475,105 +451,105 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
           </div>
 
           <div className="xl:col-span-4 space-y-6 sticky top-28">
-             <div className="bg-[#131315] border border-white/5 p-6 rounded-2xl relative overflow-hidden group shadow-xl">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-[#eeb32d]/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-150 transition-transform duration-1000"></div>
-                <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-6 flex items-center gap-3">
-                   <Info size={16} className="text-[#eeb32d]" /> Informações
-                </h4>
-                <div className="space-y-4">
-                  {notices.length > 0 ? notices.map(n => {
-                    const style = getNoticeStyle(n.type);
-                    const Component = n.link ? 'a' : 'div';
-                    const linkProps = n.link ? { href: n.link, target: "_blank", rel: "noopener noreferrer" } : {};
+              <div className="bg-[#131315] border border-white/5 p-6 rounded-2xl relative overflow-hidden group shadow-xl">
+                 <div className="absolute top-0 right-0 w-24 h-24 bg-[#eeb32d]/5 rounded-full -translate-y-10 translate-x-10 group-hover:scale-150 transition-transform duration-1000"></div>
+                 <h4 className="text-[10px] font-black text-white uppercase tracking-widest mb-6 flex items-center gap-3">
+                    <Info size={16} className="text-[#eeb32d]" /> Informações
+                 </h4>
+                 <div className="space-y-4">
+                   {notices.length > 0 ? notices.map(n => {
+                     const style = getNoticeStyle(n.type);
+                     const Component = n.link ? 'a' : 'div';
+                     const linkProps = n.link ? { href: n.link, target: "_blank", rel: "noopener noreferrer" } : {};
 
-                    return (
-                      <Component key={n.id} {...linkProps} className={`block relative pl-4 border-l-2 ${style.border} ${n.link ? 'cursor-pointer hover:bg-white/[0.02] transition-colors rounded-r' : ''}`}>
-                        <div className="flex items-start justify-between">
-                           <div>
-                              <div className={`text-[8px] font-black uppercase mb-1 flex items-center gap-2 ${style.text}`}>
-                                 {style.icon} {style.label}
-                              </div>
-                              <p className="text-[11px] text-gray-400 leading-relaxed italic whitespace-pre-wrap">"{n.text}"</p>
-                              <span className="text-[8px] text-gray-600 font-bold uppercase mt-2 block tracking-widest">{n.date}</span>
-                           </div>
-                           {n.link && <ExternalLink size={12} className="text-gray-600 mt-1" />}
-                        </div>
-                      </Component>
-                    );
-                  }) : (
-                    <p className="text-gray-600 text-[9px] uppercase font-black text-center py-4">Sem notificações.</p>
-                  )}
-                </div>
-             </div>
-
-             <div className="bg-gradient-to-br from-[#eeb32d]/5 to-[#131315] border border-[#eeb32d]/10 p-6 rounded-2xl flex flex-col gap-6 shadow-xl">
-                <div>
-                  <h4 className="text-[10px] font-black text-[#eeb32d] uppercase tracking-widest mb-3 italic">Suporte Especializado</h4>
-                  <p className="text-gray-400 text-xs leading-relaxed">Conecte-se com o QG no Discord. Nossos analistas estão online para revisar suas demos e táticas.</p>
-                </div>
-                <button className="w-full bg-[#eeb32d] hover:bg-white text-black font-black py-4 rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#eeb32d]/5">
-                   <Zap size={16} fill="black" /> Entrar no Discord
-                </button>
-             </div>
-
-             <div className="bg-[#18181b] border border-white/5 p-0 rounded-2xl overflow-hidden shadow-2xl relative group">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#eeb32d] to-transparent"></div>
-                <div className="p-6 pb-4 flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-xl bg-[#0F1012] border border-white/10 flex items-center justify-center relative shrink-0">
-                     <Crosshair className="text-[#eeb32d]" size={28} />
-                     <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#18181b]"></div>
-                  </div>
-                  <div>
-                     <h3 className="text-sm font-black text-white uppercase leading-tight">{displayName}</h3>
-                     <p className="text-[10px] text-[#eeb32d] font-bold uppercase tracking-widest mt-1">Operador Verificado</p>
-                     <p className="text-[9px] text-gray-600 font-mono mt-1">ID: {session.user.id.slice(0,8).toUpperCase()}</p>
-                  </div>
-                </div>
-
-                <div className="px-6 py-2">
-                   <div className="grid grid-cols-1 gap-3">
-                      <div className="flex items-center justify-between p-3 bg-[#0F1012] rounded border border-white/5 hover:border-[#eeb32d]/20 transition-colors">
-                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-orange-500/10 flex items-center justify-center text-orange-500">
-                               <Flame size={16} fill="currentColor" className="animate-pulse" />
-                            </div>
+                     return (
+                       <Component key={n.id} {...linkProps} className={`block relative pl-4 border-l-2 ${style.border} ${n.link ? 'cursor-pointer hover:bg-white/[0.02] transition-colors rounded-r' : ''}`}>
+                         <div className="flex items-start justify-between">
                             <div>
-                               <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Sequência</p>
-                               <p className="text-xs font-bold text-white">{streakDays} Dias Seguidos</p>
+                               <div className={`text-[8px] font-black uppercase mb-1 flex items-center gap-2 ${style.text}`}>
+                                  {style.icon} {style.label}
+                               </div>
+                               <p className="text-[11px] text-gray-400 leading-relaxed italic whitespace-pre-wrap">"{n.text}"</p>
+                               <span className="text-[8px] text-gray-600 font-bold uppercase mt-2 block tracking-widest">{n.date}</span>
                             </div>
+                            {n.link && <ExternalLink size={12} className="text-gray-600 mt-1" />}
                          </div>
-                      </div>
+                       </Component>
+                     );
+                   }) : (
+                     <p className="text-gray-600 text-[9px] uppercase font-black text-center py-4">Sem notificações.</p>
+                   )}
+                 </div>
+              </div>
 
-                      <div className="flex items-center justify-between p-3 bg-[#0F1012] rounded border border-white/5 hover:border-[#eeb32d]/20 transition-colors">
-                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center text-blue-500">
-                               <Calendar size={16} />
-                            </div>
-                            <div>
-                               <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Tempo de QG</p>
-                               <p className="text-xs font-bold text-white">{memberSince || "Recruta"}</p>
-                            </div>
-                         </div>
-                      </div>
+              <div className="bg-gradient-to-br from-[#eeb32d]/5 to-[#131315] border border-[#eeb32d]/10 p-6 rounded-2xl flex flex-col gap-6 shadow-xl">
+                 <div>
+                   <h4 className="text-[10px] font-black text-[#eeb32d] uppercase tracking-widest mb-3 italic">Suporte Especializado</h4>
+                   <p className="text-gray-400 text-xs leading-relaxed">Conecte-se com o QG no Discord. Nossos analistas estão online para revisar suas demos e táticas.</p>
+                 </div>
+                 <button className="w-full bg-[#eeb32d] hover:bg-white text-black font-black py-4 rounded-xl text-[10px] uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl shadow-[#eeb32d]/5">
+                    <Zap size={16} fill="black" /> Entrar no Discord
+                 </button>
+              </div>
 
-                      <div className="flex items-center justify-between p-3 bg-[#0F1012] rounded border border-white/5 hover:border-[#eeb32d]/20 transition-colors">
-                         <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded bg-green-500/10 flex items-center justify-center text-green-500">
-                               <Activity size={16} />
-                            </div>
-                            <div>
-                               <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Último Treino</p>
-                               <p className="text-xs font-bold text-white">{lastActivityTime}</p>
-                            </div>
-                         </div>
-                      </div>
+              <div className="bg-[#18181b] border border-white/5 p-0 rounded-2xl overflow-hidden shadow-2xl relative group">
+                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#eeb32d] to-transparent"></div>
+                 <div className="p-6 pb-4 flex items-center gap-4">
+                   <div className="w-16 h-16 rounded-xl bg-[#0F1012] border border-white/10 flex items-center justify-center relative shrink-0">
+                      <Crosshair className="text-[#eeb32d]" size={28} />
+                      <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-[#18181b]"></div>
                    </div>
-                </div>
+                   <div>
+                      <h3 className="text-sm font-black text-white uppercase leading-tight">{displayName}</h3>
+                      <p className="text-[10px] text-[#eeb32d] font-bold uppercase tracking-widest mt-1">Operador Verificado</p>
+                      <p className="text-[9px] text-gray-600 font-mono mt-1">ID: {session.user.id.slice(0,8).toUpperCase()}</p>
+                   </div>
+                 </div>
 
-                <div className="p-3 bg-[#0F1012] border-t border-white/5 text-center">
-                   <span className="text-[8px] font-black uppercase tracking-[0.2em] text-gray-600">Status Operacional: Ativo</span>
-                </div>
-             </div>
+                 <div className="px-6 py-2">
+                    <div className="grid grid-cols-1 gap-3">
+                       <div className="flex items-center justify-between p-3 bg-[#0F1012] rounded border border-white/5 hover:border-[#eeb32d]/20 transition-colors">
+                          <div className="flex items-center gap-3">
+                             <div className="w-8 h-8 rounded bg-orange-500/10 flex items-center justify-center text-orange-500">
+                                <Flame size={16} fill="currentColor" className="animate-pulse" />
+                             </div>
+                             <div>
+                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Sequência</p>
+                                <p className="text-xs font-bold text-white">{streakDays} Dias Seguidos</p>
+                             </div>
+                          </div>
+                       </div>
+
+                       <div className="flex items-center justify-between p-3 bg-[#0F1012] rounded border border-white/5 hover:border-[#eeb32d]/20 transition-colors">
+                          <div className="flex items-center gap-3">
+                             <div className="w-8 h-8 rounded bg-blue-500/10 flex items-center justify-center text-blue-500">
+                                <Calendar size={16} />
+                             </div>
+                             <div>
+                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Tempo de QG</p>
+                                <p className="text-xs font-bold text-white">{memberSince || "Recruta"}</p>
+                             </div>
+                          </div>
+                       </div>
+
+                       <div className="flex items-center justify-between p-3 bg-[#0F1012] rounded border border-white/5 hover:border-[#eeb32d]/20 transition-colors">
+                          <div className="flex items-center gap-3">
+                             <div className="w-8 h-8 rounded bg-green-500/10 flex items-center justify-center text-green-500">
+                                <Activity size={16} />
+                             </div>
+                             <div>
+                                <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Último Treino</p>
+                                <p className="text-xs font-bold text-white">{lastActivityTime}</p>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+
+                 <div className="p-3 bg-[#0F1012] border-t border-white/5 text-center">
+                    <span className="text-[8px] font-black uppercase tracking-[0.2em] text-gray-600">Status Operacional: Ativo</span>
+                 </div>
+              </div>
           </div>
         </div>
       </main>

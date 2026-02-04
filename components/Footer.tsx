@@ -1,7 +1,19 @@
-import React from 'react';
-import { Twitter, Instagram, Youtube, Facebook } from 'lucide-react';
 
-const Footer: React.FC = () => {
+import React from 'react';
+import { Twitter, Instagram, Youtube } from 'lucide-react';
+
+interface FooterProps {
+  onNavigate?: (page: any) => void;
+}
+
+const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
+  const handleNav = (e: React.MouseEvent, page: string) => {
+    if (onNavigate) {
+      e.preventDefault();
+      onNavigate(page);
+    }
+  };
+
   return (
     <footer className="bg-[#0a0a0b] border-t border-white/5 py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -21,17 +33,17 @@ const Footer: React.FC = () => {
           <div>
             <h5 className="text-white font-bold uppercase mb-4">Plataforma</h5>
             <ul className="space-y-2 text-sm text-gray-500">
-              <li><a href="#" className="hover:text-white">Login</a></li>
-              <li><a href="#" className="hover:text-white">Criar Conta</a></li>
-              <li><a href="#" className="hover:text-white">Termos de Uso</a></li>
-              <li><a href="#" className="hover:text-white">Política de Privacidade</a></li>
+              <li><button onClick={(e) => handleNav(e, 'login')} className="hover:text-white transition-colors">Login</button></li>
+              <li><button onClick={(e) => handleNav(e, 'signup')} className="hover:text-white transition-colors">Criar Conta</button></li>
+              <li><button onClick={(e) => handleNav(e, 'terms')} className="hover:text-white transition-colors">Termos de Uso</button></li>
+              <li><button onClick={(e) => handleNav(e, 'privacy')} className="hover:text-white transition-colors">Política de Privacidade</button></li>
             </ul>
           </div>
 
           <div>
             <h5 className="text-white font-bold uppercase mb-4">Suporte</h5>
             <ul className="space-y-2 text-sm text-gray-500">
-              <li><a href="#" className="hover:text-white">FAQ</a></li>
+              <li><a href="#faq" className="hover:text-white">FAQ</a></li>
               <li><a href="#" className="hover:text-white">Contato</a></li>
               <li><a href="#" className="hover:text-white">Reembolso</a></li>
             </ul>

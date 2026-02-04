@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
-import { Mail, Lock, User, CheckCircle2, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
-import { supabase, isConfigured } from '../lib/supabaseClient';
+import { Mail, Lock, User, CheckCircle2, AlertCircle, ArrowRight, Loader2, ShieldCheck, ExternalLink } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
 
 interface SignupProps {
   onNavigate: (page: string) => void;
@@ -14,46 +15,49 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
     confirmPassword: ''
   });
 
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [generalError, setGeneralError] = useState('');
+
   const [errors, setErrors] = useState({
     fullName: '',
     email: '',
     password: '',
-    confirmPassword: ''
+    confirmPassword: '',
+    terms: ''
   });
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [generalError, setGeneralError] = useState('');
 
   const validate = () => {
     let isValid = true;
-    const newErrors = { fullName: '', email: '', password: '', confirmPassword: '' };
+    const newErrors = { fullName: '', email: '', password: '', confirmPassword: '', terms: '' };
 
-    // Full Name
     if (!formData.fullName.trim()) {
       newErrors.fullName = 'Nome completo é obrigatório';
       isValid = false;
     }
 
-    // Email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(formData.email.trim())) {
       newErrors.email = 'Insira um e-mail válido';
       isValid = false;
     }
 
-    // Password: Min 6 chars, starts with special char
     const specialCharRegex = /^[^a-zA-Z0-9]/;
     if (formData.password.length < 6) {
-      newErrors.password = 'A senha deve ter no mínimo 6 dígitos';
+      newErrors.password = 'Mínimo 6 dígitos';
       isValid = false;
     } else if (!specialCharRegex.test(formData.password)) {
-      newErrors.password = 'A senha deve COMEÇAR com um caractere especial (!, @, #, etc)';
+      newErrors.password = 'Inicie com caractere especial';
       isValid = false;
     }
 
-    // Confirm Password
     if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'As senhas não coincidem';
+      newErrors.confirmPassword = 'Senhas diferentes';
+      isValid = false;
+    }
+
+    if (!acceptedTerms) {
+      newErrors.terms = 'Aceite os termos para prosseguir';
       isValid = false;
     }
 
@@ -79,38 +83,27 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
           },
         });
 
-        if (error) {
-          throw error;
-        }
+        if (error) throw error;
 
-        // --- CORREÇÃO: Inserir manualmente no profiles para garantir visualização no Admin ---
+        // REGISTRO JURÍDICO: Gravamos o aceite no perfil do usuário
         if (data.user) {
-          const { error: profileError } = await supabase.from('profiles').upsert([
+          await supabase.from('profiles').upsert([
             {
               id: data.user.id,
               email: formData.email.trim(),
               name: formData.fullName.trim(),
               role: 'student',
-              has_purchased: false
+              has_purchased: false,
+              accepted_terms_at: new Date().toISOString() // PROVA DIGITAL
             }
           ]);
-
-          if (profileError) {
-            console.warn("Aviso: Falha ao criar perfil manual (pode já existir via trigger ou erro de permissão):", profileError);
-          }
         }
-        // -----------------------------------------------------------------------------------
 
-        alert('Conta criada com sucesso! Se necessário, verifique seu e-mail para confirmar o cadastro.');
+        alert('Operação bem sucedida! Arsenal criado.');
         onNavigate('login');
 
       } catch (error: any) {
-        console.error('Erro no cadastro:', error);
-        if (error.message === 'Failed to fetch') {
-           setGeneralError('Erro de conexão. Verifique sua internet ou a configuração do Supabase.');
-        } else {
-           setGeneralError(error.message || 'Erro ao criar conta. Tente novamente.');
-        }
+        setGeneralError(error.message || 'Erro ao criar conta.');
       } finally {
         setIsLoading(false);
       }
@@ -120,7 +113,6 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    // Clear error when user types
     if (errors[name as keyof typeof errors]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -128,131 +120,111 @@ const Signup: React.FC<SignupProps> = ({ onNavigate }) => {
 
   return (
     <div className="min-h-[90vh] flex items-center justify-center relative px-4 py-10">
-       {/* Background Effects */}
        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:40px_40px] opacity-30 pointer-events-none"></div>
-       <div className="absolute bottom-0 right-1/4 translate-x-1/2 w-[600px] h-[600px] bg-[#eeb32d]/5 blur-[120px] rounded-full pointer-events-none"></div>
 
       <div className="w-full max-w-lg relative z-10">
-        <div className="bg-[#131315]/90 backdrop-blur-xl border border-white/10 rounded-2xl p-8 md:p-10 shadow-[0_0_50px_rgba(0,0,0,0.5)]">
+        <div className="bg-[#131315]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-8 md:p-10 shadow-2xl">
           
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-display font-bold text-white uppercase italic">
-              Criar <span className="text-[#eeb32d]">Conta</span>
+            <h2 className="text-3xl font-display font-bold text-white uppercase italic tracking-tighter">
+              Alistar <span className="text-[#eeb32d]">Operador</span>
             </h2>
-            <p className="text-gray-400 text-sm mt-2">
-              Junte-se à elite do CS2 e comece sua evolução.
-            </p>
+            <p className="text-gray-500 text-xs mt-2 uppercase font-bold tracking-widest">Recrutamento para a Elite do CS2</p>
           </div>
 
           {generalError && (
-            <div className="bg-red-500/10 border border-red-500/50 text-red-500 p-3 rounded mb-6 text-sm text-center">
-              {generalError}
+            <div className="bg-red-500/10 border border-red-500/30 text-red-500 p-3 rounded mb-6 text-[10px] font-bold text-center uppercase tracking-widest animate-pulse">
+              <AlertCircle className="inline mr-2" size={14} /> {generalError}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            
-            {/* Full Name */}
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Nome Completo</label>
-              <div className="relative group">
-                <User className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${errors.fullName ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
-                <input 
-                  type="text" 
-                  name="fullName"
-                  value={formData.fullName}
-                  onChange={handleChange}
-                  placeholder="Seu nome completo"
-                  className={`w-full bg-[#0a0a0b] border ${errors.fullName ? 'border-red-500/50' : 'border-white/10'} text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-colors placeholder:text-gray-600`}
-                />
-              </div>
-              {errors.fullName && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.fullName}</p>}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4">
+               <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Nome Completo</label>
+                  <div className="relative group">
+                    <User className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${errors.fullName ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
+                    <input type="text" name="fullName" value={formData.fullName} onChange={handleChange} className="w-full bg-[#0a0a0b] border border-white/10 text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-all text-sm" placeholder="Ex: Gabriel Toledo" />
+                  </div>
+                  {errors.fullName && <p className="text-red-500 text-[10px] mt-1 font-bold uppercase tracking-tighter">{errors.fullName}</p>}
+               </div>
+
+               <div>
+                  <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">E-mail de Acesso</label>
+                  <div className="relative group">
+                    <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${errors.email ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
+                    <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full bg-[#0a0a0b] border border-white/10 text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-all text-sm" placeholder="seu@email.com" />
+                  </div>
+                  {errors.email && <p className="text-red-500 text-[10px] mt-1 font-bold uppercase tracking-tighter">{errors.email}</p>}
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Senha</label>
+                    <div className="relative group">
+                      <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${errors.password ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
+                      <input type="password" name="password" value={formData.password} onChange={handleChange} className="w-full bg-[#0a0a0b] border border-white/10 text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-all text-sm" placeholder="!Senha123" />
+                    </div>
+                    {errors.password && <p className="text-red-500 text-[10px] mt-1 font-bold uppercase tracking-tighter leading-none">{errors.password}</p>}
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-gray-500 uppercase mb-2 tracking-widest">Confirmar</label>
+                    <div className="relative group">
+                      <CheckCircle2 className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${errors.confirmPassword ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
+                      <input type="password" name="confirmPassword" value={formData.confirmPassword} onChange={handleChange} className="w-full bg-[#0a0a0b] border border-white/10 text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-all text-sm" placeholder="••••••••" />
+                    </div>
+                  </div>
+               </div>
             </div>
 
-            {/* Email */}
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">E-mail</label>
-              <div className="relative group">
-                <Mail className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${errors.email ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
-                <input 
-                  type="email" 
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  placeholder="seu@email.com"
-                  className={`w-full bg-[#0a0a0b] border ${errors.email ? 'border-red-500/50' : 'border-white/10'} text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-colors placeholder:text-gray-600`}
-                />
-              </div>
-              {errors.email && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.email}</p>}
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
-                Senha <span className="text-[10px] text-gray-500 normal-case font-normal">(Mín. 6 dígitos, iniciar com caractere especial)</span>
-              </label>
-              <div className="relative group">
-                <Lock className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${errors.password ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
-                <input 
-                  type="password" 
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  placeholder="!Senha123"
-                  className={`w-full bg-[#0a0a0b] border ${errors.password ? 'border-red-500/50' : 'border-white/10'} text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-colors placeholder:text-gray-600`}
-                />
-              </div>
-              {errors.password && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.password}</p>}
-            </div>
-
-            {/* Confirm Password */}
-            <div>
-              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Repetir Senha</label>
-              <div className="relative group">
-                <CheckCircle2 className={`absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors ${errors.confirmPassword ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#eeb32d]'}`} />
-                <input 
-                  type="password" 
-                  name="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  placeholder="Repita a senha anterior"
-                  className={`w-full bg-[#0a0a0b] border ${errors.confirmPassword ? 'border-red-500/50' : 'border-white/10'} text-white rounded p-3 pl-10 focus:outline-none focus:border-[#eeb32d] transition-colors placeholder:text-gray-600`}
-                />
-              </div>
-              {errors.confirmPassword && <p className="text-red-500 text-xs mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> {errors.confirmPassword}</p>}
+            {/* CHECKBOX JURÍDICO */}
+            <div className="py-4 bg-white/5 px-4 rounded-lg border border-white/5">
+               <label className="flex items-start gap-4 cursor-pointer select-none group">
+                  <div className="relative mt-1">
+                     <input 
+                        type="checkbox" 
+                        checked={acceptedTerms}
+                        onChange={() => {
+                          setAcceptedTerms(!acceptedTerms);
+                          setErrors(prev => ({ ...prev, terms: '' }));
+                        }}
+                        className="sr-only" 
+                     />
+                     <div className={`w-5 h-5 rounded border transition-all flex items-center justify-center ${acceptedTerms ? 'bg-[#eeb32d] border-[#eeb32d]' : 'bg-black border-white/20 group-hover:border-[#eeb32d]/50'}`}>
+                        {acceptedTerms && <ShieldCheck size={14} className="text-black" />}
+                     </div>
+                  </div>
+                  <div className="flex-1">
+                     <p className="text-[11px] text-gray-400 leading-tight">
+                        Li e concordo com os{' '}
+                        <button type="button" onClick={() => window.open('/DoutrinaCS/#/terms', '_blank')} className="text-[#eeb32d] font-bold hover:underline inline-flex items-center gap-1">Termos de Uso <ExternalLink size={10}/></button>
+                        {' '}e a{' '}
+                        <button type="button" onClick={() => window.open('/DoutrinaCS/#/privacy', '_blank')} className="text-[#eeb32d] font-bold hover:underline inline-flex items-center gap-1">Política de Privacidade <ExternalLink size={10}/></button>.
+                     </p>
+                  </div>
+               </label>
+               {errors.terms && <p className="text-red-500 text-[10px] mt-2 font-bold uppercase tracking-widest flex items-center gap-2"><AlertCircle size={12}/> {errors.terms}</p>}
             </div>
 
             <button 
               type="submit" 
               disabled={isLoading}
-              className="w-full bg-[#eeb32d] hover:bg-[#dca020] disabled:bg-gray-600 disabled:cursor-not-allowed text-black font-bold font-display text-lg py-3 rounded mt-4 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-[0_0_20px_rgba(238,179,45,0.2)]"
+              className="w-full bg-[#eeb32d] hover:bg-[#dca020] disabled:opacity-50 text-black font-black font-display text-xl py-4 rounded-xl mt-4 flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#eeb32d]/10"
             >
               {isLoading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  REGISTRANDO...
-                </>
+                <Loader2 className="w-6 h-6 animate-spin" />
               ) : (
-                <>
-                  REGISTRAR
-                  <ArrowRight className="w-5 h-5" />
-                </>
+                <>CRIAR MEU ARSENAL <ArrowRight className="w-6 h-6" /></>
               )}
             </button>
           </form>
 
           <div className="mt-8 text-center border-t border-white/5 pt-6">
-            <p className="text-gray-400 text-sm">
-              Já possui uma conta?{' '}
-              <button 
-                onClick={() => onNavigate('login')}
-                className="text-[#eeb32d] font-bold hover:underline decoration-[#eeb32d] underline-offset-4"
-              >
-                Fazer Login
-              </button>
+            <p className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">
+              Já é um Operador?{' '}
+              <button onClick={() => onNavigate('login')} className="text-[#eeb32d] hover:underline">Fazer Login</button>
             </p>
           </div>
-
         </div>
       </div>
     </div>

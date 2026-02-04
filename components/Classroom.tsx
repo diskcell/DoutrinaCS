@@ -69,9 +69,9 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
   };
 
   return (
-    <div className="flex flex-col h-screen bg-[#0F1012] text-white overflow-hidden">
+    <div className="flex flex-col min-h-screen bg-[#0F1012] text-white">
       
-      <header className="h-16 bg-[#131315] border-b border-white/5 flex items-center justify-between px-4 z-20 shrink-0">
+      <header className="h-16 bg-[#131315] border-b border-white/5 flex items-center justify-between px-4 sticky top-0 z-30 shrink-0">
         <div className="flex items-center gap-4">
           <button 
             onClick={onBack}
@@ -99,10 +99,11 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
         </button>
       </header>
 
-      <div className="flex flex-1 overflow-hidden relative">
+      <div className="flex flex-1 relative">
         
-        <div className="flex-1 overflow-y-auto bg-[#0F1012] flex flex-col">
-           <div className="w-full bg-black border-b border-white/5 flex justify-center sticky top-0 z-10 shadow-2xl">
+        <div className="flex-1 bg-[#0F1012] flex flex-col">
+           {/* Removido o 'sticky top-16 z-20 shadow-2xl' para permitir a rolagem fluida */}
+           <div className="w-full bg-black border-b border-white/5 flex justify-center z-10">
                <div className="w-full max-w-6xl relative aspect-video bg-black flex items-center justify-center">
                   {videoSource ? (
                     shouldUseCustomPlayer ? (
@@ -202,7 +203,7 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
 
         <aside 
           className={`
-            fixed lg:relative right-0 top-0 h-full w-full lg:w-[400px] bg-[#131315] border-l border-white/5 transition-all duration-300 ease-in-out z-50 flex flex-col
+            fixed lg:sticky lg:top-16 lg:h-[calc(100vh-64px)] right-0 top-0 h-full w-full lg:w-[400px] bg-[#131315] border-l border-white/5 transition-all duration-300 ease-in-out z-50 flex flex-col
             ${sidebarOpen ? 'translate-x-0' : 'translate-x-full lg:hidden'}
           `}
         >

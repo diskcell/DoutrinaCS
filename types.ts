@@ -54,7 +54,21 @@ export interface UserProfile {
   name?: string;           
   email?: string;
   created_at?: string;
+  accepted_terms_at?: string; // Registro jurídico do aceite
   accessible_modules?: string[];
   rank?: string;
   total_xp?: number;
 }
+
+export type PageType =
+  | 'home'
+  | 'course'
+  | 'plans'
+  | 'login'
+  | 'signup'
+  | 'dashboard'
+  | 'admin'
+  | 'checkout'
+  | 'about'
+  | 'terms'
+  | 'privacy';
