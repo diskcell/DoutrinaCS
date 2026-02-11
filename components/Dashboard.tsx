@@ -15,7 +15,7 @@ interface DashboardProps {
   onLogout: () => void;
   isAdmin?: boolean;
   isApproved?: boolean;
-  isCheckingProfile?: boolean; // Prop essencial
+  isCheckingProfile?: boolean; 
   refreshKey?: number;
   onNavigateToAdmin?: () => void;
   onNavigateToPlans?: () => void;
@@ -86,11 +86,9 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
     return { progress, completed, total, rank, icon, color };
   }, [modules]);
 
-  // AQUI A MÁGICA DE DESBLOQUEIO:
+  // Função central de processamento de bloqueios
   const processData = (rawData: any[], profile: UserProfile | null, doneIds: Set<string>) => {
-    // Se estiver carregando, assume que é VIP (true). Se carregou, usa o valor real.
     const accessAssumed = isCheckingProfile ? true : (profile?.has_purchased === true);
-    
     const isMasterAdmin = isAdmin || profile?.role === 'admin' || session.user.email === 'jefersonjjjj24@gmail.com'; 
     const accessibleModules = profile?.accessible_modules || [];
 
@@ -98,7 +96,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
     const safeData = Array.isArray(rawData) ? rawData : [];
 
     return safeData.map((mod: any) => {
-      // Se acesso for assumido (loading), libera tudo
       const userHasPlanForModule = accessAssumed || accessibleModules.includes(mod.id);
       const isModulePlanUnlocked = isMasterAdmin || userHasPlanForModule;
 
@@ -116,7 +113,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
           } else if (isMasterAdmin) {
             status = 'available';
           } else if (!isModulePlanUnlocked) {
-            // Se estiver checando, NÃO bloqueia (mostra available ou locked baseado na sequencia)
             status = isCheckingProfile ? 'available' : 'locked';
           } else if (previousLessonFinished) {
             status = 'available';
@@ -137,16 +133,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
     });
   };
 
-  // Atualiza módulos quando o status de checagem mudar (para bloquear se for o caso)
-  useEffect(() => {
-    if (!isLoadingData && rawModulesData.length > 0) {
-        const processedModules = processData(rawModulesData, userProfile, completedLessonIds);
-        setModules(processedModules);
-    }
-  }, [isCheckingProfile, isApproved]); // Dependências cruciais
-
   const loadDashboardData = async () => {
-    if (!dataLoadedRef.current) setIsLoadingData(true);
+    setIsLoadingData(true);
 
     try {
       const [profileRes, modulesRes, noticesRes, progressRes] = await Promise.all([
@@ -186,13 +174,19 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
         if (firstUnlock) setOpenModuleId(firstUnlock.id);
       }
 
-      dataLoadedRef.current = true;
     } catch (err) {
       console.error("Erro dashboard:", err);
     } finally {
-      setIsLoadingData(false);
+      setIsLoadingData(false); 
     }
   };
+
+  useEffect(() => {
+    if (!isLoadingData && rawModulesData.length > 0) {
+        const processedModules = processData(rawModulesData, userProfile, completedLessonIds);
+        setModules(processedModules);
+    }
+  }, [isCheckingProfile, isApproved, isAdmin]); 
 
   useEffect(() => {
     loadDashboardData();
@@ -241,9 +235,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
     />;
   }
 
-  // TRAVA VISUAL: Só mostra o bloqueio SE não estiver carregando E não for aprovado.
   const showLockedScreen = !isCheckingProfile && !isApproved && !isAdmin && session.user.email !== 'jefersonjjjj24@gmail.com';
-  
   const displayName = userProfile?.name || session.user.user_metadata?.full_name || 'Operador';
   const nextLesson = modules.filter(m => !m.isLocked).flatMap(m => m.lessons).find(l => l.status === 'available') || null;
 
@@ -371,7 +363,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onLogout, isAdmin = fals
                       const meta = MODULE_METADATA[m.id] || { subtitle: "Operacional", icon: <Zap size={20}/>, description: "Protocolo padrão." };
                       const isOpen = openModuleId === m.id;
                       
-                      // TRAVA VISUAL: Se estiver checando perfil, NÃO trava.
                       const locked = (isCheckingProfile ? false : m.isLocked) && !isAdmin;
 
                       return (

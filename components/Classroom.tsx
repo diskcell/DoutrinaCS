@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, Play, CheckCircle2, Lock, Circle, ChevronDown, ChevronUp, Menu, X, ArrowRight } from 'lucide-react';
+import { ChevronLeft, Play, CheckCircle2, Lock, Circle, ChevronDown, ChevronUp, Menu, X, ArrowRight, ExternalLink } from 'lucide-react';
 import { ModuleStatus, LessonStatus } from '../types';
 import VideoPlayer from './VideoPlayer'; 
 
@@ -49,15 +49,34 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
     return null;
   }, [lesson.id, modules]);
 
-  // Recupera o ID ou URL, dando prioridade para o novo campo 'video_id'
-  const videoSource = (lesson as any).video_id || lesson.video_url;
+  // Função para renderizar texto com links clicáveis
+  const renderDescription = (text: string) => {
+    if (!text) return null;
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
+    
+    return parts.map((part, i) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a 
+            key={i} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-[#eeb32d] hover:text-white underline font-bold inline-flex items-center gap-1 break-all"
+          >
+            {part} <ExternalLink size={12} />
+          </a>
+        );
+      }
+      return part;
+    });
+  };
 
-  // Lógica de Detecção Inteligente
+  const videoSource = (lesson as any).video_id || lesson.video_url;
   const isSimpleId = videoSource && !videoSource.includes('/') && !videoSource.includes('.'); 
   const isDriveUrl = videoSource && videoSource.includes('drive.google.com');
   const isEmbed = videoSource && (videoSource.includes('iframe') || videoSource.includes('embed'));
-  
-  // Se for ID simples ou Link do Drive, usa o nosso Player Cloudflare
   const shouldUseCustomPlayer = isSimpleId || isDriveUrl;
 
   const handleLessonChange = (newLesson: LessonStatus) => {
@@ -102,7 +121,6 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
       <div className="flex flex-1 relative">
         
         <div className="flex-1 bg-[#0F1012] flex flex-col">
-           {/* Removido o 'sticky top-16 z-20 shadow-2xl' para permitir a rolagem fluida */}
            <div className="w-full bg-black border-b border-white/5 flex justify-center z-10">
                <div className="w-full max-w-6xl relative aspect-video bg-black flex items-center justify-center">
                   {videoSource ? (
@@ -151,9 +169,9 @@ const Classroom: React.FC<ClassroomProps> = ({ lesson, modules, onBack, onSelect
                       <span className="text-gray-600 text-[10px] uppercase font-bold tracking-widest">{lesson.duration} de Treinamento</span>
                   </div>
                   <h2 className="text-3xl md:text-5xl font-display font-bold uppercase italic text-white tracking-tight">Descrição da Missão</h2>
-                  <p className="text-gray-400 text-base leading-relaxed max-w-3xl whitespace-pre-wrap">
-                    {lesson.description || "Nesta fase do treinamento, focaremos em táticas específicas e mecânicas avançadas para consolidar sua evolução como operador de elite. Estude cada detalhe visualizado."}
-                  </p>
+                  <div className="text-gray-400 text-base leading-relaxed max-w-3xl whitespace-pre-wrap">
+                    {renderDescription(lesson.description || "Nesta fase do treinamento, focaremos em táticas específicas e mecânicas avançadas para consolidar sua evolução como operador de elite. Estude cada detalhe visualizado.")}
+                  </div>
                 </div>
                 
                 <div className="flex flex-col gap-3 shrink-0">
